@@ -44,13 +44,48 @@
     btnModalClose: document.getElementById('btnModalClose'),
     btnModalDismiss: document.getElementById('btnModalDismiss'),
     btnModalDownload: document.getElementById('btnModalDownload'),
-    toastContainer: document.getElementById('toastContainer')
+    toastContainer: document.getElementById('toastContainer'),
+    btnThemeToggle: document.getElementById('btnThemeToggle')
   };
 
   // --- Initialize App ---
   function init() {
+    initTheme();
     setupEventListeners();
     refreshLucideIcons();
+  }
+
+  // --- Theme Management ---
+  function initTheme() {
+    const savedTheme = localStorage.getItem('esm_theme') || 'light';
+    applyTheme(savedTheme);
+
+    if (DOM.btnThemeToggle) {
+      DOM.btnThemeToggle.addEventListener('click', toggleTheme);
+    }
+  }
+
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('esm_theme', theme);
+
+    if (DOM.btnThemeToggle) {
+      if (theme === 'dark') {
+        DOM.btnThemeToggle.innerHTML = `<i data-lucide="sun" class="icon-sm"></i><span>라이트 모드</span>`;
+        DOM.btnThemeToggle.title = '밝은 모드로 전환';
+      } else {
+        DOM.btnThemeToggle.innerHTML = `<i data-lucide="moon" class="icon-sm"></i><span>다크 모드</span>`;
+        DOM.btnThemeToggle.title = '다크 모드로 전환';
+      }
+      refreshLucideIcons();
+    }
+  }
+
+  function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    applyTheme(newTheme);
+    showToast(`${newTheme === 'dark' ? '다크 모드' : '화사하고 깔끔한 라이트 모드'}가 적용되었습니다.`, 'info', 2000);
   }
 
   // --- Event Listeners ---

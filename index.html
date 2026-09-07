@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Excel Schema Merger - 엑셀 규격별 자동 분류 및 병합기</title>
+  <meta name="description" content="여러 엑셀 파일을 업로드하면 동일한 헤더 규격끼리 자동 분류하여 하나로 병합해주는 웹 앱">
+  
+  <!-- Pretendard Web Font -->
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- SheetJS (xlsx) for in-browser excel processing -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  
+  <!-- JSZip for multi-group bulk zip export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="logo-box">
+          <i data-lucide="sheet" class="logo-icon"></i>
+        </div>
+        <div class="brand-text">
+          <div class="title-row">
+            <h1>Excel Schema Merger</h1>
+            <span class="version-badge">v1.0</span>
+            <span class="client-secure-badge">
+              <i data-lucide="shield-check" class="mini-icon"></i> 100% 클라이언트 안전 처리
+            </span>
+          </div>
+          <p class="subtitle">다양한 엑셀 파일들을 헤더(열 구성)에 따라 동일 규격끼리 똑똑하게 묶고 하나로 병합합니다.</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btnSampleDemo" class="btn btn-secondary">
+          <i data-lucide="sparkles" class="icon-sm"></i>
+          <span>샘플 파일로 바로 체험</span>
+        </button>
+        <button id="btnResetAll" class="btn btn-outline" style="display: none;">
+          <i data-lucide="rotate-ccw" class="icon-sm"></i>
+          <span>초기화</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Upload Section -->
+      <section class="upload-section">
+        <div id="dropZone" class="drop-zone">
+          <input type="file" id="fileInput" multiple accept=".xlsx, .xls, .csv" hidden />
+          <div class="drop-zone-content">
+            <div class="upload-icon-pulse">
+              <i data-lucide="file-spreadsheet" class="upload-icon"></i>
+            </div>
+            <h3 class="drop-title">엑셀 파일을 이곳에 끌어다 놓으세요</h3>
+            <p class="drop-desc">또는 <span class="browse-link">파일 찾아보기</span> 클릭 (.xlsx, .xls, .csv 지원)</p>
+            <div class="upload-tips">
+              <span class="tip-item"><i data-lucide="layers" class="mini-icon"></i> 복수 파일 동시 선택 가능</span>
+              <span class="tip-item"><i data-lucide="cpu" class="mini-icon"></i> 서버 업로드 없는 브라우저 즉시 분석</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Options & Setting Bar -->
+      <section class="options-bar">
+        <div class="options-group">
+          <span class="options-label"><i data-lucide="sliders" class="mini-icon"></i> 병합 설정:</span>
+          
+          <label class="toggle-control" title="병합 결과 첫 번째 열에 해당 행의 출처 파일명을 기록합니다.">
+            <input type="checkbox" id="optAddSourceFile" checked>
+            <span class="toggle-slider"></span>
+            <span class="toggle-text">출처 파일명 열 추가 (<code>_원본파일</code>)</span>
+          </label>
+
+          <label class="toggle-control" title="열 이름이 같으면 열 순서가 조금 달라도 동일 규격으로 매핑하여 정렬합니다.">
+            <input type="checkbox" id="optFlexibleOrder" checked>
+            <span class="toggle-slider"></span>
+            <span class="toggle-text">컬럼 순서 무관 매핑</span>
+          </label>
+
+          <label class="toggle-control" title="내용이 없는 빈 행은 병합 시 자동으로 제외합니다.">
+            <input type="checkbox" id="optTrimEmptyRows" checked>
+            <span class="toggle-slider"></span>
+            <span class="toggle-text">빈 행 자동 제외</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Dashboard Stats & Global Actions -->
+      <section id="statsSection" class="stats-section" style="display: none;">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon-wrapper blue">
+              <i data-lucide="files"></i>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">총 업로드 파일</span>
+              <span id="statTotalFiles" class="stat-value">0</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon-wrapper green">
+              <i data-lucide="combine"></i>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">분류된 규격 그룹</span>
+              <span id="statTotalGroups" class="stat-value">0</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon-wrapper purple">
+              <i data-lucide="table"></i>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">병합 대상 총 행(Rows)</span>
+              <span id="statTotalRows" class="stat-value">0</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon-wrapper amber">
+              <i data-lucide="alert-circle"></i>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">단독 규격 (1개 파일)</span>
+              <span id="statSingleGroups" class="stat-value">0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="global-actions">
+          <div class="action-summary-text">
+            규격 분석이 완료되었습니다. 그룹별로 다운로드하거나 모든 병합본을 한 번에 내려받으세요.
+          </div>
+          <button id="btnDownloadAllZip" class="btn btn-primary btn-glow">
+            <i data-lucide="archive" class="icon-sm"></i>
+            <span>전체 그룹 ZIP 일괄 다운로드</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Schema Groups Container -->
+      <section id="groupsContainer" class="groups-section">
+        <!-- Empty State -->
+        <div id="emptyState" class="empty-state">
+          <div class="empty-icon-wrap">
+            <i data-lucide="inbox" class="empty-icon"></i>
+          </div>
+          <h3>아직 업로드된 파일이 없습니다</h3>
+          <p>여러 개의 엑셀 파일을 위 영역에 추가하시면 헤더 규격을 자동 인식하여 분류해 드립니다.<br>
+          어떤 구조인지 궁금하시다면 상단의 <strong>[샘플 파일로 바로 체험]</strong> 버튼을 눌러보세요.</p>
+        </div>
+
+        <!-- Dynamic Groups Rendered Here -->
+        <div id="groupCardsList" class="group-cards-list"></div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>Excel Schema Merger &bull; 클라이언트 브라우저에서 안전하게 동작하며 서버로 파일이 전송되지 않습니다.</p>
+    </footer>
+  </div>
+
+  <!-- Preview Modal -->
+  <div id="previewModal" class="modal-backdrop" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title-box">
+          <div class="modal-badge"><i data-lucide="eye" class="mini-icon"></i> 병합 미리보기</div>
+          <h3 id="modalGroupName" class="modal-title">규격 그룹 미리보기</h3>
+        </div>
+        <button id="btnModalClose" class="modal-close-btn">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-info-strip">
+          <div class="info-tag">
+            <i data-lucide="file-text" class="mini-icon"></i>
+            <span id="modalIncludedFilesCount">0개 파일 포함</span>
+          </div>
+          <div class="info-tag">
+            <i data-lucide="hash" class="mini-icon"></i>
+            <span id="modalTotalRowsCount">총 0행</span>
+          </div>
+          <div class="info-tag info-tip">
+            <i data-lucide="info" class="mini-icon"></i>
+            <span>상위 최대 50행의 샘플 데이터가 표시됩니다.</span>
+          </div>
+        </div>
+
+        <div class="modal-table-container">
+          <table id="previewTable" class="preview-table">
+            <thead id="previewThead"></thead>
+            <tbody id="previewTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btnModalDownload" class="btn btn-primary">
+          <i data-lucide="download" class="icon-sm"></i>
+          <span>이 그룹 엑셀 다운로드</span>
+        </button>
+        <button id="btnModalDismiss" class="btn btn-secondary">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- App Script -->
+  <script src="app.js"></script>
+</body>
+</html>

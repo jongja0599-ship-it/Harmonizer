@@ -11,9 +11,16 @@
     uploadedFiles: [], // Array of file objects with parsed data
     groups: [],        // Array of grouped schema objects
     options: {
-      addSourceFile: true,
       flexibleOrder: true,
-      trimEmptyRows: true
+      trimEmptyRows: true,
+      commonVars: {
+        sourceFile: true,   // _원본파일명
+        sheetName: true,    // _시트명
+        mergeDate: true,    // _병합일시
+        rowNumber: true,    // _원본행번호
+        customMemo: false,  // _공통메모
+        memoText: ''
+      }
     },
     activePreviewGroup: null
   };
@@ -24,7 +31,15 @@
     fileInput: document.getElementById('fileInput'),
     btnSampleDemo: document.getElementById('btnSampleDemo'),
     btnResetAll: document.getElementById('btnResetAll'),
-    optAddSourceFile: document.getElementById('optAddSourceFile'),
+    // Common Variables 5 items
+    optVarSourceFile: document.getElementById('optVarSourceFile'),
+    optVarSheetName: document.getElementById('optVarSheetName'),
+    optVarMergeDate: document.getElementById('optVarMergeDate'),
+    optVarRowNumber: document.getElementById('optVarRowNumber'),
+    optVarCustomMemo: document.getElementById('optVarCustomMemo'),
+    memoInputWrap: document.getElementById('memoInputWrap'),
+    optVarMemoText: document.getElementById('optVarMemoText'),
+    // General Rules
     optFlexibleOrder: document.getElementById('optFlexibleOrder'),
     optTrimEmptyRows: document.getElementById('optTrimEmptyRows'),
     statsSection: document.getElementById('statsSection'),
@@ -110,11 +125,45 @@
       }
     });
 
-    // Options toggles
-    DOM.optAddSourceFile.addEventListener('change', (e) => {
-      state.options.addSourceFile = e.target.checked;
+    // Common Variables 5 items toggles
+    const handleCommonVarChange = () => {
+      state.options.commonVars.sourceFile = DOM.optVarSourceFile ? DOM.optVarSourceFile.checked : true;
+      state.options.commonVars.sheetName = DOM.optVarSheetName ? DOM.optVarSheetName.checked : false;
+      state.options.commonVars.mergeDate = DOM.optVarMergeDate ? DOM.optVarMergeDate.checked : false;
+      state.options.commonVars.rowNumber = DOM.optVarRowNumber ? DOM.optVarRowNumber.checked : false;
+      state.options.commonVars.customMemo = DOM.optVarCustomMemo ? DOM.optVarCustomMemo.checked : false;
+
+      if (DOM.optVarCustomMemo && DOM.memoInputWrap) {
+        if (DOM.optVarCustomMemo.checked) {
+          DOM.memoInputWrap.style.display = 'inline-flex';
+          if (DOM.optVarMemoText) DOM.optVarMemoText.focus();
+        } else {
+          DOM.memoInputWrap.style.display = 'none';
+        }
+      }
+
       renderGroups();
-    });
+      if (state.activePreviewGroup) {
+        openPreviewModal(state.activePreviewGroup);
+      }
+    };
+
+    if (DOM.optVarSourceFile) DOM.optVarSourceFile.addEventListener('change', handleCommonVarChange);
+    if (DOM.optVarSheetName) DOM.optVarSheetName.addEventListener('change', handleCommonVarChange);
+    if (DOM.optVarMergeDate) DOM.optVarMergeDate.addEventListener('change', handleCommonVarChange);
+    if (DOM.optVarRowNumber) DOM.optVarRowNumber.addEventListener('change', handleCommonVarChange);
+    if (DOM.optVarCustomMemo) DOM.optVarCustomMemo.addEventListener('change', handleCommonVarChange);
+
+    if (DOM.optVarMemoText) {
+      DOM.optVarMemoText.addEventListener('input', (e) => {
+        state.options.commonVars.memoText = e.target.value;
+        if (state.activePreviewGroup) {
+          openPreviewModal(state.activePreviewGroup);
+        }
+      });
+    }
+
+    // Merge Rule toggles
     DOM.optFlexibleOrder.addEventListener('change', (e) => {
       state.options.flexibleOrder = e.target.checked;
       rebuildGroups();
@@ -268,14 +317,18 @@
           }
 
           // Data rows (from row 1 onwards)
-          let dataRows = rawAoa.slice(1);
-
-          if (state.options.trimEmptyRows) {
-            dataRows = dataRows.filter(row => {
-              if (!row || !Array.isArray(row)) return false;
-              return row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== '');
-            });
-          }
+          const rawRows = rawAoa.slice(1);
+          const dataRows = [];
+          rawRows.forEach((row, idx) => {
+            if (!row || !Array.isArray(row)) return;
+            if (state.options.trimEmptyRows) {
+              const hasContent = row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== '');
+              if (!hasContent) return;
+            }
+            const rowCopy = [...row];
+            rowCopy.__rowNum = idx + 2; // Header is row 1, data starts at row 2
+            dataRows.push(rowCopy);
+          });
 
           resolve({
             id: 'file_' + Math.random().toString(36).substr(2, 9),
@@ -284,6 +337,7 @@
             sheetName: sheetName,
             headers: cleanHeaders,
             rawHeaders: rawHeaders.map(h => String(h || '').trim()),
+            rawRows: rawRows,
             dataRows: dataRows,
             rowCount: dataRows.length
           });
@@ -312,6 +366,25 @@
       renderUI();
       return;
     }
+
+    // Re-evaluate rows based on trimEmptyRows option
+    state.uploadedFiles.forEach(file => {
+      if (file.rawRows) {
+        const filtered = [];
+        file.rawRows.forEach((row, idx) => {
+          if (!row || !Array.isArray(row)) return;
+          if (state.options.trimEmptyRows) {
+            const hasContent = row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== '');
+            if (!hasContent) return;
+          }
+          const rowCopy = [...row];
+          rowCopy.__rowNum = idx + 2;
+          filtered.push(rowCopy);
+        });
+        file.dataRows = filtered;
+        file.rowCount = filtered.length;
+      }
+    });
 
     const groupsMap = new Map();
 
@@ -377,8 +450,41 @@
     refreshLucideIcons();
   }
 
+  // --- Common Meta Variables Helpers ---
+  function getActiveMetaColumns() {
+    const cols = [];
+    const vars = state.options.commonVars;
+    if (vars.sourceFile) {
+      cols.push({ id: 'sourceFile', name: '_원본파일명', label: '원본 파일명' });
+    }
+    if (vars.sheetName) {
+      cols.push({ id: 'sheetName', name: '_시트명', label: '시트명' });
+    }
+    if (vars.mergeDate) {
+      cols.push({ id: 'mergeDate', name: '_병합일시', label: '병합 일시' });
+    }
+    if (vars.rowNumber) {
+      cols.push({ id: 'rowNumber', name: '_원본행번호', label: '원본 행 번호' });
+    }
+    if (vars.customMemo) {
+      cols.push({ id: 'customMemo', name: '_공통메모', label: '공통 메모' });
+    }
+    return cols;
+  }
+
+  function getFormattedDateTime(date = new Date()) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    const ss = String(date.getSeconds()).padStart(2, '0');
+    return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+  }
+
   function renderGroups() {
     DOM.groupCardsList.innerHTML = '';
+    const metaCols = getActiveMetaColumns();
 
     state.groups.forEach((group, idx) => {
       const isMulti = group.files.length > 1;
@@ -406,10 +512,11 @@
         group.name = e.target.value.trim() || `규격그룹_${idx + 1}`;
       });
 
+      const totalColsCount = group.canonicalHeaders.length + metaCols.length;
       const countsEl = document.createElement('div');
       countsEl.className = 'group-counts';
       countsEl.innerHTML = `
-        <span><i data-lucide="columns" class="mini-icon"></i> ${group.canonicalHeaders.length}개 열</span>
+        <span><i data-lucide="columns" class="mini-icon"></i> 총 ${totalColsCount}개 열 (원본 ${group.canonicalHeaders.length}${metaCols.length > 0 ? ` + 공통변수 ${metaCols.length}` : ''})</span>
         <span>&bull;</span>
         <span><i data-lucide="table" class="mini-icon"></i> 총 ${group.totalRows.toLocaleString()}개 데이터 행</span>
       `;
@@ -447,20 +554,20 @@
       colSection.className = 'schema-cols-section';
       colSection.innerHTML = `
         <div class="schema-section-title">
-          <i data-lucide="layout-grid" class="mini-icon"></i> 일치 규격 헤더 목록 (${group.canonicalHeaders.length}개)
+          <i data-lucide="layout-grid" class="mini-icon"></i> 일치 규격 헤더 목록 (총 ${totalColsCount}개 열)
         </div>
       `;
       const colTagsWrap = document.createElement('div');
       colTagsWrap.className = 'schema-columns-wrap';
 
-      if (state.options.addSourceFile) {
-        const srcTag = document.createElement('span');
-        srcTag.className = 'col-tag';
-        srcTag.style.borderColor = 'rgba(56, 189, 248, 0.4)';
-        srcTag.style.color = '#38bdf8';
-        srcTag.innerHTML = `<span class="col-index">[추가열]</span> _원본파일`;
-        colTagsWrap.appendChild(srcTag);
-      }
+      // Active common variables tags first
+      metaCols.forEach(m => {
+        const metaTag = document.createElement('span');
+        metaTag.className = 'col-tag meta-tag';
+        metaTag.innerHTML = `<span class="col-index">[공통변수]</span> ${escapeHtml(m.name)}`;
+        metaTag.title = `${m.label} (모든 병합 행에 자동 생성)`;
+        colTagsWrap.appendChild(metaTag);
+      });
 
       group.canonicalHeaders.forEach((col, cIdx) => {
         const tag = document.createElement('span');
@@ -537,9 +644,13 @@
 
   // --- Merge Data Generator ---
   function buildMergedAoaForGroup(group) {
-    const headers = [...group.canonicalHeaders];
-    const finalHeaders = state.options.addSourceFile ? ['_원본파일', ...headers] : [...headers];
+    const metaCols = getActiveMetaColumns();
+    const metaHeaders = metaCols.map(m => m.name);
+    const finalHeaders = [...metaHeaders, ...group.canonicalHeaders];
     const aoa = [finalHeaders];
+
+    const currentTimestamp = getFormattedDateTime();
+    const memoVal = (state.options.commonVars.memoText || '').trim();
 
     // For each file, map its data rows into canonical header columns
     group.files.forEach(file => {
@@ -552,7 +663,7 @@
         colMap.push(fileColIdx);
       });
 
-      file.dataRows.forEach(row => {
+      file.dataRows.forEach((row, rIdx) => {
         const mappedRow = colMap.map(srcIdx => {
           if (srcIdx === -1 || srcIdx >= row.length || row[srcIdx] === undefined) {
             return '';
@@ -560,11 +671,24 @@
           return row[srcIdx];
         });
 
-        if (state.options.addSourceFile) {
-          aoa.push([file.name, ...mappedRow]);
-        } else {
-          aoa.push(mappedRow);
-        }
+        const metaValues = metaCols.map(col => {
+          switch (col.id) {
+            case 'sourceFile':
+              return file.name;
+            case 'sheetName':
+              return file.sheetName || 'Sheet1';
+            case 'mergeDate':
+              return currentTimestamp;
+            case 'rowNumber':
+              return row.__rowNum !== undefined ? row.__rowNum : (rIdx + 2);
+            case 'customMemo':
+              return memoVal;
+            default:
+              return '';
+          }
+        });
+
+        aoa.push([...metaValues, ...mappedRow]);
       });
     });
 
@@ -578,6 +702,8 @@
     DOM.modalIncludedFilesCount.textContent = `${group.files.length}개 파일 포함 (${group.files.map(f => f.name).join(', ')})`;
     DOM.modalTotalRowsCount.textContent = `총 ${group.totalRows.toLocaleString()}개 행`;
 
+    const metaCols = getActiveMetaColumns();
+    const metaCount = metaCols.length;
     const mergedAoa = buildMergedAoaForGroup(group);
     const headers = mergedAoa[0] || [];
     const sampleRows = mergedAoa.slice(1, 51); // Top 50 rows for preview
@@ -586,7 +712,10 @@
     DOM.previewThead.innerHTML = `
       <tr>
         <th style="width: 50px;">#</th>
-        ${headers.map(h => `<th class="${h === '_원본파일' ? 'source-cell' : ''}">${escapeHtml(String(h))}</th>`).join('')}
+        ${headers.map((h, i) => {
+          const isMeta = i < metaCount;
+          return `<th class="${isMeta ? 'meta-th' : ''}">${escapeHtml(String(h))}</th>`;
+        }).join('')}
       </tr>
     `;
 
@@ -604,8 +733,8 @@
         <tr>
           <td style="color: var(--text-dim); font-family: monospace;">${rIdx + 1}</td>
           ${row.map((cell, cIdx) => {
-            const isSource = state.options.addSourceFile && cIdx === 0;
-            return `<td class="${isSource ? 'source-cell' : ''}">${escapeHtml(formatCellValue(cell))}</td>`;
+            const isMeta = cIdx < metaCount;
+            return `<td class="${isMeta ? 'meta-td' : ''}">${escapeHtml(formatCellValue(cell))}</td>`;
           }).join('')}
         </tr>
       `).join('');
@@ -746,23 +875,29 @@
     ];
 
     const sampleFiles = [
-      { name: '2024년_01월_주문매출내역.xlsx', aoa: demoSales1 },
-      { name: '2024년_02월_주문매출내역.xlsx', aoa: demoSales2 },
-      { name: '2024년_03월_주문매출내역.xlsx', aoa: demoSales3 },
-      { name: '2024년_임직원명부_개발본부.xlsx', aoa: demoHr1 },
-      { name: '2024년_임직원명부_디자인실.xlsx', aoa: demoHr2 }
+      { name: '2024년_01월_주문매출내역.xlsx', sheet: '1월_주문내역', aoa: demoSales1 },
+      { name: '2024년_02월_주문매출내역.xlsx', sheet: '2월_주문내역', aoa: demoSales2 },
+      { name: '2024년_03월_주문매출내역.xlsx', sheet: '3월_주문내역', aoa: demoSales3 },
+      { name: '2024년_임직원명부_개발본부.xlsx', sheet: '개발본부_인사명부', aoa: demoHr1 },
+      { name: '2024년_임직원명부_디자인실.xlsx', sheet: '디자인실_인사명부', aoa: demoHr2 }
     ];
 
     state.uploadedFiles = sampleFiles.map(s => {
       const cleanHeaders = s.aoa[0].map(h => String(h).trim());
-      const dataRows = s.aoa.slice(1);
+      const rawRows = s.aoa.slice(1);
+      const dataRows = rawRows.map((row, idx) => {
+        const rowCopy = [...row];
+        rowCopy.__rowNum = idx + 2;
+        return rowCopy;
+      });
       return {
         id: 'file_' + Math.random().toString(36).substr(2, 9),
         name: s.name,
         size: 15420,
-        sheetName: 'Sheet1',
+        sheetName: s.sheet,
         headers: cleanHeaders,
         rawHeaders: cleanHeaders,
+        rawRows: rawRows,
         dataRows: dataRows,
         rowCount: dataRows.length
       };

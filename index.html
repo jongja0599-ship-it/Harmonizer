@@ -78,26 +78,75 @@
 
       <!-- Options & Setting Bar -->
       <section class="options-bar">
-        <div class="options-group">
-          <span class="options-label"><i data-lucide="sliders" class="mini-icon"></i> 병합 설정:</span>
-          
-          <label class="toggle-control" title="병합 결과 첫 번째 열에 해당 행의 출처 파일명을 기록합니다.">
-            <input type="checkbox" id="optAddSourceFile" checked>
-            <span class="toggle-slider"></span>
-            <span class="toggle-text">출처 파일명 열 추가 (<code>_원본파일</code>)</span>
-          </label>
+        <!-- Common Variables Group (5 items) -->
+        <div class="options-section">
+          <div class="options-section-header">
+            <span class="options-label">
+              <i data-lucide="variable" class="mini-icon"></i> 공통 변수 추가 (메타데이터 5종):
+            </span>
+            <span class="options-subtitle">병합 결과 첫머리에 공통으로 기록할 열을 선택하세요</span>
+          </div>
 
-          <label class="toggle-control" title="열 이름이 같으면 열 순서가 조금 달라도 동일 규격으로 매핑하여 정렬합니다.">
-            <input type="checkbox" id="optFlexibleOrder" checked>
-            <span class="toggle-slider"></span>
-            <span class="toggle-text">컬럼 순서 무관 매핑</span>
-          </label>
+          <div class="common-vars-grid">
+            <label class="toggle-control" title="병합 결과 각 행에 원본 엑셀 파일명을 기록합니다.">
+              <input type="checkbox" id="optVarSourceFile" checked>
+              <span class="toggle-slider"></span>
+              <span class="toggle-text"><code>_원본파일명</code></span>
+            </label>
 
-          <label class="toggle-control" title="내용이 없는 빈 행은 병합 시 자동으로 제외합니다.">
-            <input type="checkbox" id="optTrimEmptyRows" checked>
-            <span class="toggle-slider"></span>
-            <span class="toggle-text">빈 행 자동 제외</span>
-          </label>
+            <label class="toggle-control" title="병합 결과 각 행에 원본 시트명을 기록합니다.">
+              <input type="checkbox" id="optVarSheetName" checked>
+              <span class="toggle-slider"></span>
+              <span class="toggle-text"><code>_시트명</code></span>
+            </label>
+
+            <label class="toggle-control" title="병합 생성 및 처리 일시를 YYYY-MM-DD HH:mm:ss 형식으로 기록합니다.">
+              <input type="checkbox" id="optVarMergeDate" checked>
+              <span class="toggle-slider"></span>
+              <span class="toggle-text"><code>_병합일시</code></span>
+            </label>
+
+            <label class="toggle-control" title="해당 데이터 행이 원본 파일에서 몇 번째 행이었는지 번호를 기록합니다.">
+              <input type="checkbox" id="optVarRowNumber" checked>
+              <span class="toggle-slider"></span>
+              <span class="toggle-text"><code>_원본행번호</code></span>
+            </label>
+
+            <div class="custom-memo-control-wrap">
+              <label class="toggle-control" title="사용자가 지정한 공통 메모/프로젝트 라벨/작업자명을 모든 행에 일괄 기록합니다.">
+                <input type="checkbox" id="optVarCustomMemo">
+                <span class="toggle-slider"></span>
+                <span class="toggle-text"><code>_공통메모</code></span>
+              </label>
+              <div class="memo-input-wrap" id="memoInputWrap" style="display: none;">
+                <input type="text" id="optVarMemoText" class="input-memo" placeholder="메모 / 라벨 입력 (예: 2026 상반기 취합)" title="모든 병합 데이터 행에 공통으로 기재될 메모 값" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="options-divider"></div>
+
+        <!-- General Merge Rules -->
+        <div class="options-section rules-section">
+          <div class="options-section-header">
+            <span class="options-label">
+              <i data-lucide="sliders" class="mini-icon"></i> 병합 규칙:
+            </span>
+          </div>
+          <div class="rules-grid">
+            <label class="toggle-control" title="열 이름이 같으면 열 순서가 조금 달라도 동일 규격으로 매핑하여 정렬합니다.">
+              <input type="checkbox" id="optFlexibleOrder" checked>
+              <span class="toggle-slider"></span>
+              <span class="toggle-text">컬럼 순서 무관 매핑</span>
+            </label>
+
+            <label class="toggle-control" title="내용이 없는 빈 행은 병합 시 자동으로 제외합니다.">
+              <input type="checkbox" id="optTrimEmptyRows" checked>
+              <span class="toggle-slider"></span>
+              <span class="toggle-text">빈 행 자동 제외</span>
+            </label>
+          </div>
         </div>
       </section>
 

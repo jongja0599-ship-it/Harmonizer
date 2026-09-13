@@ -1,9 +1,1467 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-  <meta http-equiv="refresh" content="0; url=keyword_extractor.html">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>세포배양 데이터 표준화 및 통합 DB 빌더 (CellCulture Harmonizer)</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdfa', 100: '#ccfbf1', 200: '#99f6e4',
+              300: '#5eead4', 400: '#2dd4bf', 500: '#14b8a6',
+              600: '#0d9488', 700: '#0f766e', 800: '#115e59', 900: '#134e4a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- SheetJS (xlsx) CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <style>
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .glass-header { backdrop-filter: blur(12px); background-color: rgba(255,255,255,0.92); }
+    .badge { display: inline-flex; align-items: center; padding: 0.15rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+    .toggle-switch { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { width: 32px; height: 17px; background-color: #cbd5e1; border-radius: 9999px; transition: 0.2s; }
+    .toggle-slider:before { content: ''; position: absolute; height: 13px; width: 13px; left: 2px; bottom: 2px; background-color: white; border-radius: 50%; transition: 0.2s; }
+    .toggle-switch input:checked + .toggle-slider { background-color: #0d9488; }
+    .toggle-switch input:checked + .toggle-slider:before { transform: translateX(15px); }
+  </style>
 </head>
-<body>
-  <p>페이지로 이동 중입니다... <a href="keyword_extractor.html">여기를 클릭하세요</a></p>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased">
+
+  <!-- TOP NAVIGATION / HEADER -->
+  <header class="sticky top-0 z-40 glass-header border-b border-slate-200 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-teal-600 to-emerald-400 flex items-center justify-center shadow-md text-white">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-lg font-bold text-slate-900 leading-tight">CellCulture Data Harmonizer</h1>
+            <span class="badge bg-teal-100 text-teal-800 text-[10px] font-mono">v2.0</span>
+          </div>
+          <p class="text-xs text-slate-500 font-medium">세포배양 실험 데이터 표준화 &middot; 유효성 검증 &middot; 단위환산 &middot; 통합 DB 빌더</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2">
+        <a href="keyword_extractor.html" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 transition flex items-center shadow-xs">
+          <svg class="w-3.5 h-3.5 mr-1 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+          </svg>
+          <span>키워드 자동 추출 모드로 전환</span>
+          <span class="ml-1.5 px-1.5 py-0.2 rounded bg-emerald-200 text-emerald-900 text-[10px] font-bold">New</span>
+        </a>
+        <button id="btn-load-demo" class="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100 transition flex items-center shadow-sm">
+          <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          데모 데이터셋 자동 불러오기
+        </button>
+        <button id="btn-reset-all" class="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition">
+          초기화
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- STEP WIZARD BAR -->
+  <div class="bg-white border-b border-slate-200 py-3 shadow-xs">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <nav class="flex items-center justify-between max-w-2xl mx-auto">
+        <ol class="flex items-center space-x-6 sm:space-x-12 w-full justify-between">
+          <li class="relative flex items-center cursor-pointer" onclick="switchStep(1)">
+            <div id="step-badge-1" class="w-8 h-8 rounded-full bg-teal-600 text-white flex items-center justify-center font-bold text-sm shadow-sm ring-4 ring-teal-100">1</div>
+            <div class="ml-3 text-left">
+              <span id="step-label-1" class="text-xs font-bold text-teal-700 block">파일 업로드</span>
+              <span class="text-[11px] text-slate-400 hidden sm:block">다양한 엑셀/CSV 등록</span>
+            </div>
+          </li>
+          <div class="h-0.5 flex-1 bg-slate-200"></div>
+          <li class="relative flex items-center cursor-pointer" onclick="switchStep(2)">
+            <div id="step-badge-2" class="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm">2</div>
+            <div class="ml-3 text-left">
+              <span id="step-label-2" class="text-xs font-medium text-slate-500 block">매핑 & 전처리 설정</span>
+              <span class="text-[11px] text-slate-400 hidden sm:block">단위/이상치/정규화</span>
+            </div>
+          </li>
+          <div class="h-0.5 flex-1 bg-slate-200"></div>
+          <li class="relative flex items-center cursor-pointer" onclick="switchStep(3)">
+            <div id="step-badge-3" class="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm">3</div>
+            <div class="ml-3 text-left">
+              <span id="step-label-3" class="text-xs font-medium text-slate-500 block">통합 DB & 분석</span>
+              <span class="text-[11px] text-slate-400 hidden sm:block">Long/Wide & 내보내기</span>
+            </div>
+          </li>
+        </ol>
+      </nav>
+    </div>
+  </div>
+
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- ===== STEP 1 ===== -->
+    <section id="step-section-1" class="space-y-6">
+      <div class="bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 rounded-2xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
+        <div class="absolute -right-10 -bottom-10 w-72 h-72 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-3xl relative z-10 space-y-3">
+          <div class="inline-flex items-center space-x-2 bg-teal-500/20 text-teal-300 border border-teal-500/30 text-xs px-2.5 py-1 rounded-full font-medium">
+            <span>Client-Side Local Processing</span>
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>데이터 외부 유출 없음 (100% 브라우저 처리)</span>
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight">연구원별 제각각인 세포배양 데이터를 완전한 DB로 통일하세요</h2>
+          <p class="text-slate-300 text-sm leading-relaxed">
+            연구원마다 다른 컬럼명, 단위(<span class="text-teal-300 font-mono">10^5</span> vs <span class="text-teal-300 font-mono">10^6 cells/mL</span>, <span class="text-teal-300 font-mono">mM</span> vs <span class="text-teal-300 font-mono">g/L</span>), 일시 표현(<span class="text-teal-300 font-mono">Day 0</span>, <span class="text-teal-300 font-mono">48h</span>), 세포주 표기(<span class="text-teal-300 font-mono">cho k1</span> vs <span class="text-teal-300 font-mono">CHO-K1</span>), 결측치(<span class="text-teal-300 font-mono">&lt; LOD</span>, N/A)를 자동으로 정제·검증하여 표준 Long/Wide DB로 구축합니다.
+          </p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 space-y-4">
+          <div id="dropzone" class="border-2 border-dashed border-teal-300 hover:border-teal-500 bg-white rounded-2xl p-8 text-center transition-all cursor-pointer shadow-sm hover:shadow-md flex flex-col items-center justify-center min-h-[200px]">
+            <input type="file" id="file-input" multiple accept=".xlsx, .xls, .csv" class="hidden" />
+            <div class="w-14 h-14 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mb-3">
+              <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            </div>
+            <p class="text-sm font-semibold text-slate-800">엑셀(.xlsx, .xls) 또는 CSV 파일을 여기로 드래그하거나 <span class="text-teal-600 underline">파일 찾아보기</span></p>
+            <p class="text-xs text-slate-400 mt-1">여러 파일 동시 업로드 가능 &middot; 이상치/단위 자동 감지</p>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div class="flex items-center space-x-2">
+                <h3 class="text-sm font-bold text-slate-800">등록된 파일 목록</h3>
+                <span id="file-count-badge" class="badge bg-teal-100 text-teal-800">0개 파일</span>
+              </div>
+              <button id="btn-clear-files" class="text-xs text-slate-400 hover:text-red-500 transition hidden">전체 비우기</button>
+            </div>
+            <div id="file-list-container" class="divide-y divide-slate-100 min-h-[120px] flex flex-col justify-center">
+              <div id="empty-file-notice" class="p-6 text-center text-slate-400 text-sm">
+                업로드된 파일이 없습니다. 파일을 추가하거나 '데모 데이터셋 자동 불러오기'를 클릭하세요.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Schema Preview -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+          <h3 class="text-sm font-bold text-slate-900 flex items-center">
+            <svg class="w-4 h-4 mr-1.5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            표준 통합 DB 스키마
+            <span class="ml-2 badge bg-emerald-100 text-emerald-800 text-[10px]">Data Lineage 포함</span>
+          </h3>
+          <p class="text-xs text-slate-500">모든 연구원 데이터를 아래 표준 스키마 및 추적성(Lineage) 메타데이터로 정규화합니다.</p>
+          <div class="space-y-1.5 text-xs max-h-[340px] overflow-y-auto pr-1">
+            <div class="p-2 rounded-lg bg-teal-50/70 border border-teal-100 flex items-start space-x-2">
+              <span class="font-mono font-bold text-teal-800 w-28 shrink-0">Experiment_ID</span>
+              <span class="text-slate-600">실험 고유식별자</span>
+            </div>
+            <div class="p-2 rounded-lg bg-slate-50 border border-slate-100 flex items-start space-x-2">
+              <span class="font-mono font-bold text-slate-800 w-28 shrink-0">Culture_Day</span>
+              <span class="text-slate-600">배양일수 (시간 자동환산)</span>
+            </div>
+            <div class="p-2 rounded-lg bg-slate-50 border border-slate-100 flex items-start space-x-2">
+              <span class="font-mono font-bold text-slate-800 w-28 shrink-0">Sample_Date</span>
+              <span class="text-slate-600">측정 일시 (YYYY-MM-DD)</span>
+            </div>
+            <div class="p-2 rounded-lg bg-slate-50 border border-slate-100 flex items-start space-x-2">
+              <span class="font-mono font-bold text-slate-800 w-28 shrink-0">Cell_Line</span>
+              <span class="text-slate-600">정규화된 세포주 (CHO-K1 등)</span>
+            </div>
+            <div class="p-2 rounded-lg bg-slate-50 border border-slate-100 flex items-start space-x-2">
+              <span class="font-mono font-bold text-slate-800 w-28 shrink-0">Vessel_Group</span>
+              <span class="text-slate-600">표준화된 배양 용기/조건</span>
+            </div>
+            <div class="p-2 rounded-lg bg-amber-50/70 border border-amber-100 flex items-start space-x-2">
+              <span class="font-mono font-bold text-amber-800 w-28 shrink-0">Parameter / Value / Unit</span>
+              <span class="text-slate-600">측정항목 / 표준환산값 / 단위</span>
+            </div>
+            <div class="p-2 rounded-lg bg-sky-50/70 border border-sky-100 flex items-start space-x-2">
+              <span class="font-mono font-bold text-sky-800 w-28 shrink-0">Original_Value / Unit</span>
+              <span class="text-slate-600">환산 전 원본 수치 및 단위</span>
+            </div>
+            <div class="p-2 rounded-lg bg-rose-50/70 border border-rose-100 flex items-start space-x-2">
+              <span class="font-mono font-bold text-rose-800 w-28 shrink-0">Validation_Status</span>
+              <span class="text-slate-600">품질 상태 (Valid/Outlier/Missing)</span>
+            </div>
+            <div class="p-2 rounded-lg bg-indigo-50/70 border border-indigo-100 flex items-start space-x-2">
+              <span class="font-mono font-bold text-indigo-800 w-28 shrink-0">Source_File / Upload_Time</span>
+              <span class="text-slate-600">원본 추적 메타데이터 (Lineage)</span>
+            </div>
+          </div>
+          <button id="btn-goto-step-2" disabled class="w-full py-2.5 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 text-white font-bold text-sm shadow-md transition flex items-center justify-center space-x-2 disabled:cursor-not-allowed">
+            <span>다음: 컬럼 매핑 및 전처리 설정</span>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== STEP 2 ===== -->
+    <section id="step-section-2" class="space-y-6 hidden">
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">파일별 컬럼 매핑 & 데이터 전처리 규칙 설정</h2>
+            <p class="text-xs text-slate-500">연구원 서식을 표준 스키마에 매핑하고, 단위 환산/이상치 검증/결측치 전략을 설정합니다.</p>
+          </div>
+          <button id="btn-auto-map-all" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100 transition flex items-center">
+            <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            스마트 자동 매핑 재실행
+          </button>
+        </div>
+        <div class="flex items-center space-x-2 overflow-x-auto pb-2 border-b border-slate-100" id="file-tabs-bar"></div>
+      </div>
+
+      <div id="file-mapping-panel" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Left 8 cols -->
+        <div class="lg:col-span-8 space-y-6">
+          <!-- Basic Parsing Settings -->
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <h3 class="text-xs font-bold text-slate-500 tracking-wider uppercase">기본 파싱 설정</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">대상 시트(Sheet)</label>
+                <select id="select-active-sheet" class="w-full text-xs rounded-lg border-slate-300 bg-slate-50 p-2 focus:ring-teal-500 focus:border-teal-500 font-medium"></select>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">헤더 시작 행</label>
+                <div class="flex items-center space-x-2">
+                  <input type="number" id="input-header-row" min="1" max="50" value="1" class="w-full text-xs rounded-lg border-slate-300 bg-slate-50 p-2 font-medium" />
+                  <button id="btn-apply-header-row" class="px-2.5 py-2 text-xs bg-slate-200 hover:bg-slate-300 rounded-lg font-medium transition">적용</button>
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">변환 모드</label>
+                <select id="select-transform-mode" class="w-full text-xs rounded-lg border-slate-300 bg-slate-50 p-2 font-medium">
+                  <option value="wide-to-long" selected>Wide to Long (Unpivot)</option>
+                  <option value="direct">직접 매핑 (Standard Wide)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Column Mapping -->
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-5">
+            <div>
+              <h3 class="text-sm font-bold text-slate-900">식별자 컬럼 매핑 (Identifier Columns)</h3>
+              <p class="text-xs text-slate-500">실험 ID, 배양일, 날짜, 세포주, 배양용기 등 기본 식별 정보를 매핑하세요.</p>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="identifier-mappings-container"></div>
+
+            <div class="pt-4 border-t border-slate-100">
+              <div class="flex items-center justify-between mb-2">
+                <div>
+                  <h3 class="text-sm font-bold text-slate-900 flex items-center">
+                    측정 파라미터 컬럼 (Measurement Columns)
+                    <span class="ml-2 badge bg-amber-100 text-amber-800 text-[10px]" id="selected-param-count">0개 선택됨</span>
+                  </h3>
+                  <p class="text-xs text-slate-500">Long format으로 Unpivot할 측정값 컬럼들과 단위를 지정하세요.</p>
+                </div>
+                <div class="space-x-1">
+                  <button id="btn-select-all-params" class="text-[11px] px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-medium">전체선택</button>
+                  <button id="btn-deselect-all-params" class="text-[11px] px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-medium">선택해제</button>
+                </div>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto p-1" id="param-columns-checklist"></div>
+            </div>
+          </div>
+
+          <!-- Data Validation & Preprocessing Rules Engine -->
+          <div class="bg-gradient-to-br from-white to-slate-50/50 rounded-2xl border border-teal-200/80 p-5 shadow-sm space-y-4">
+            <div class="flex items-center space-x-2 border-b border-slate-100 pb-3">
+              <div class="w-7 h-7 rounded-lg bg-teal-100 text-teal-700 flex items-center justify-center text-sm">⚡</div>
+              <div>
+                <h3 class="text-sm font-bold text-slate-900">데이터 유효성 검증 & 전처리 규칙 (Rules Engine)</h3>
+                <p class="text-[11px] text-slate-500">이상치/단위/결측치/텍스트 오류를 브라우저에서 자동 정제합니다.</p>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <!-- Outlier -->
+              <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-800 flex items-center">
+                    <span class="w-2 h-2 rounded-full bg-rose-500 mr-1.5"></span>음수 & 이상치(Outlier) 처리
+                  </span>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="cfg-check-outliers" checked>
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <p class="text-[11px] text-slate-500">파라미터별 정상 범위(Viability 0~100%, VCD 음수 방지 등) 초과 시 경고 또는 제외</p>
+                <select id="cfg-outlier-action" class="w-full text-[11px] rounded-lg border-slate-200 bg-slate-50 p-1.5">
+                  <option value="flag" selected>이상치 경고 플래그 부여 후 DB 보존 (권장)</option>
+                  <option value="exclude">이상치 레코드 제외 (Filter Out)</option>
+                </select>
+              </div>
+
+              <!-- Unit Normalization -->
+              <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-800 flex items-center">
+                    <span class="w-2 h-2 rounded-full bg-teal-500 mr-1.5"></span>단위 자동 표준화 (Unit Normalization)
+                  </span>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="cfg-normalize-units" checked>
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <p class="text-[11px] text-slate-500">
+                  <span class="font-mono text-teal-700">10^5 cells/mL ➔ 10^6</span>, <span class="font-mono text-teal-700">mM ➔ g/L</span> 분자량 자동 환산
+                </p>
+                <div class="text-[10px] text-slate-400 bg-slate-50 p-1.5 rounded border border-slate-100 font-mono">
+                  Glucose(MW 180.16), Lactate(MW 90.08)
+                </div>
+              </div>
+
+              <!-- String Normalization -->
+              <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-800 flex items-center">
+                    <span class="w-2 h-2 rounded-full bg-indigo-500 mr-1.5"></span>실험 조건 텍스트 정규화
+                  </span>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="cfg-normalize-strings" checked>
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <p class="text-[11px] text-slate-500">세포주(<span class="font-mono">cho k1</span> ➔ <span class="font-mono text-indigo-700">CHO-K1</span>), 용기(<span class="font-mono">shake flask</span> ➔ <span class="font-mono text-indigo-700">Shake Flask</span>) 통일</p>
+                <div class="text-[10px] text-slate-400 bg-slate-50 p-1.5 rounded border border-slate-100">공백 Trim, 특수문자 정제, 별칭 사전 자동 매핑</div>
+              </div>
+
+              <!-- Missing Value Strategy -->
+              <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-800 flex items-center">
+                    <span class="w-2 h-2 rounded-full bg-amber-500 mr-1.5"></span>결측치(Missing Values) 처리 전략
+                  </span>
+                  <span class="badge bg-amber-50 text-amber-700 border border-amber-200 text-[10px]">&lt; LOD / N/A 구분</span>
+                </div>
+                <p class="text-[11px] text-slate-500">미측정 항목(N/A, &lt;LOD)과 실제 수치 0 구분, 보간 전략 선택</p>
+                <select id="cfg-missing-strategy" class="w-full text-[11px] rounded-lg border-slate-200 bg-slate-50 p-1.5">
+                  <option value="keep_null" selected>결측치 유지 (NaN / Null - DB 표준 권장)</option>
+                  <option value="linear">선형 보간법 (Linear Interpolation)</option>
+                  <option value="ffill">직전값 유지 (Forward Fill / LOCF)</option>
+                  <option value="zero">0으로 채우기 (Fill with 0)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right 4 cols -->
+        <div class="lg:col-span-4 space-y-4">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-bold text-slate-700">원본 데이터 미리보기 (상위 5행)</h3>
+              <span id="preview-row-count" class="text-[10px] text-slate-400">총 0행</span>
+            </div>
+            <div class="overflow-x-auto max-h-[340px] border border-slate-100 rounded-xl bg-slate-50">
+              <table id="raw-preview-table" class="min-w-full text-[11px] text-left text-slate-600 divide-y divide-slate-200"></table>
+            </div>
+
+            <div class="pt-3 border-t border-slate-100 space-y-2">
+              <div class="flex items-center justify-between">
+                <h4 class="text-xs font-bold text-slate-700">매핑 템플릿 저장/불러오기</h4>
+                <span class="text-[10px] text-slate-400">LocalStorage</span>
+              </div>
+              <div class="flex items-center space-x-2">
+                <input type="text" id="input-preset-name" placeholder="템플릿 이름(예: Nova분석기 서식)" class="flex-1 text-xs rounded-lg border-slate-300 bg-slate-50 p-2" />
+                <button id="btn-save-preset" class="px-3 py-2 text-xs bg-slate-800 text-white rounded-lg hover:bg-slate-900 font-medium transition">저장</button>
+              </div>
+              <div class="flex items-center space-x-2">
+                <select id="select-saved-presets" class="flex-1 text-xs rounded-lg border-slate-300 bg-slate-50 p-2 font-medium">
+                  <option value="">-- 저장된 템플릿 선택 --</option>
+                </select>
+                <button id="btn-load-preset" class="px-3 py-2 text-xs bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 font-medium transition">적용</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex space-x-3">
+            <button onclick="switchStep(1)" class="flex-1 py-2.5 px-4 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold text-xs transition">이전 단계</button>
+            <button id="btn-execute-harmonization" class="w-full py-2.5 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md transition flex items-center justify-center space-x-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>통합 DB 생성 & 정제 실행</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== STEP 3 ===== -->
+    <section id="step-section-3" class="space-y-6 hidden">
+      <!-- Stats Dashboard -->
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+          <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">총 표준화 레코드</div>
+          <div class="text-2xl font-extrabold text-teal-600 mt-1" id="stat-total-rows">0</div>
+          <div class="text-[11px] text-slate-500 mt-0.5" id="stat-file-summary">0개 파일 통합됨</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+          <div class="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">정상 수치 (Valid)</div>
+          <div class="text-2xl font-extrabold text-emerald-600 mt-1" id="stat-valid-rows">0</div>
+          <div class="text-[11px] text-slate-500 mt-0.5">유효 범위 내 레코드</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+          <div class="text-[11px] font-bold text-rose-500 uppercase tracking-wider">이상치 / 음수 경고</div>
+          <div class="text-2xl font-extrabold text-rose-600 mt-1" id="stat-outlier-rows">0</div>
+          <div class="text-[11px] text-slate-500 mt-0.5">감지 및 플래그 부여됨</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+          <div class="text-[11px] font-bold text-indigo-600 uppercase tracking-wider">단위 환산 건수</div>
+          <div class="text-2xl font-extrabold text-indigo-600 mt-1" id="stat-converted-units">0</div>
+          <div class="text-[11px] text-slate-500 mt-0.5">표준 단위 자동 변환됨</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm col-span-2 sm:col-span-1">
+          <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">고유 실험 수</div>
+          <div class="text-2xl font-extrabold text-slate-800 mt-1" id="stat-unique-experiments">0</div>
+          <div class="text-[11px] text-slate-500 mt-0.5" id="stat-unique-params">0개 파라미터</div>
+        </div>
+      </div>
+
+      <!-- Main DB Table & Toolbar -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+        <!-- Header: View Toggle & Export Buttons -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div class="flex items-center space-x-2">
+            <span class="text-xs font-bold text-slate-700 mr-1">데이터 구조 뷰:</span>
+            <div class="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200 text-xs font-medium">
+              <button id="btn-view-long" class="px-3 py-1.5 rounded-lg bg-white text-teal-800 font-bold shadow-xs transition flex items-center space-x-1">
+                <svg class="w-3.5 h-3.5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+                <span>Long Format (EAV DB)</span>
+              </button>
+              <button id="btn-view-wide" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition flex items-center space-x-1">
+                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" /></svg>
+                <span>Wide Format (피봇)</span>
+              </button>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="btn-toggle-chart" class="px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center">
+              <svg class="w-4 h-4 mr-1 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" /></svg>
+              트렌드 차트
+            </button>
+            <button id="btn-download-csv" class="px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-800 hover:bg-slate-900 text-white transition flex items-center shadow-sm">
+              <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+              CSV 다운로드
+            </button>
+            <button id="btn-download-excel" class="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition flex items-center shadow-md">
+              <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              통합 엑셀 다운로드 (Long+Wide)
+            </button>
+          </div>
+        </div>
+
+        <!-- Filters Row -->
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="relative flex-1 min-w-[180px]">
+            <input type="text" id="filter-search" placeholder="통합 DB 검색 (실험ID, 세포주, 파일명 등)..." class="w-full text-xs rounded-xl border border-slate-300 pl-8 pr-3 py-2 bg-slate-50 focus:bg-white focus:ring-teal-500 focus:border-teal-500" />
+            <svg class="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          </div>
+          <select id="filter-quality" class="text-xs rounded-xl border-slate-300 bg-slate-50 py-2 px-3 font-medium">
+            <option value="all">품질 상태 전체 (All)</option>
+            <option value="valid">정상 데이터만 (Valid Only)</option>
+            <option value="outliers">경고/이상치만 (Outliers Only)</option>
+          </select>
+          <select id="filter-param" class="text-xs rounded-xl border-slate-300 bg-slate-50 py-2 px-3">
+            <option value="all">모든 파라미터 전체</option>
+          </select>
+          <select id="filter-experiment" class="text-xs rounded-xl border-slate-300 bg-slate-50 py-2 px-3">
+            <option value="all">모든 실험 전체</option>
+          </select>
+          <div class="flex items-center space-x-2 text-xs ml-auto">
+            <span class="text-slate-500 font-medium">결측치 보간:</span>
+            <select id="select-step3-interpolation" class="text-xs rounded-xl border-slate-300 bg-slate-50 py-2 px-3 font-semibold text-teal-800">
+              <option value="keep_null">결측치 유지 (NaN)</option>
+              <option value="linear">선형 보간 (Linear)</option>
+              <option value="ffill">직전값 유지 (F-Fill)</option>
+              <option value="zero">0으로 채우기</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Trend Chart -->
+        <div id="chart-section" class="border border-slate-200 rounded-xl p-4 bg-slate-50 hidden space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <h4 class="text-xs font-bold text-slate-700">배양 경과별 파라미터 트렌드</h4>
+              <span class="badge bg-rose-50 text-rose-700 border border-rose-200 text-[10px]">빨간 점 = 이상치</span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <span class="text-[11px] text-slate-500">파라미터:</span>
+              <select id="select-chart-param" class="text-xs rounded-lg border-slate-300 bg-white py-1 px-2.5 font-bold text-teal-800"></select>
+            </div>
+          </div>
+          <div class="h-64 relative">
+            <canvas id="trendChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+          <div class="overflow-x-auto max-h-[500px]">
+            <table id="main-integrated-table" class="min-w-full divide-y divide-slate-200 text-xs text-left"></table>
+          </div>
+          <div class="p-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2">
+            <div id="pagination-info">표시 중: 0 - 0 / 총 0 건</div>
+            <div class="flex items-center space-x-1">
+              <button id="btn-page-prev" class="px-2.5 py-1 rounded bg-white border border-slate-200 hover:bg-slate-100 font-medium">이전</button>
+              <span id="pagination-pages" class="px-2 font-bold text-slate-800">1 / 1</span>
+              <button id="btn-page-next" class="px-2.5 py-1 rounded bg-white border border-slate-200 hover:bg-slate-100 font-medium">다음</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="bg-white border-t border-slate-200 py-4 mt-auto">
+    <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-400">
+      CellCulture Data Harmonizer v2.0 &bull; Client-Side No-Build &bull; Bio Data Validation &amp; Lineage Engine &bull; SheetJS &amp; Tailwind CSS
+    </div>
+  </footer>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 transform transition-all duration-300 translate-y-20 opacity-0 pointer-events-none bg-slate-900 text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2">
+    <span id="toast-msg">알림</span>
+  </div>
+
+  <script>
+  // =========================================================================
+  // BIOPROCESSING KNOWLEDGE BASE & MASTER CONFIG
+  // =========================================================================
+  const PARAM_RULES = {
+    VCD: {
+      standard: 'VCD', targetUnit: 'x10^6 cells/mL', min: 0, max: 150,
+      synonyms: ['vcd', 'viable cell density', '세포수', '생세포수', '생세포밀도', 'cell density', 'viable cells'],
+      unitConversions: { '10^5 cells/ml':0.1,'10^5/ml':0.1,'x10^5 cells/ml':0.1,'x10^5/ml':0.1,'cells/ml':0.000001,'10^7 cells/ml':10,'10^6 cells/ml':1,'x10^6 cells/ml':1,'x10^6/ml':1,'10^6/ml':1,'10^6':1,'10^5':0.1 }
+    },
+    Viability: {
+      standard: 'Viability', targetUnit: '%', min: 0, max: 100,
+      synonyms: ['viability','viability(%)','live%','생존율','생세포율','viab','live cell %','live %','live'],
+      unitConversions: { '%':1, 'ratio':100, 'fraction':100 }
+    },
+    Total_Cell_Density: {
+      standard: 'Total_Cell_Density', targetUnit: 'x10^6 cells/mL', min: 0, max: 200,
+      synonyms: ['tcd','total cell density','총세포수','총세포밀도'],
+      unitConversions: { '10^5 cells/ml':0.1,'10^5/ml':0.1,'10^6 cells/ml':1,'x10^6 cells/ml':1,'cells/ml':0.000001 }
+    },
+    Glucose: {
+      standard: 'Glucose', targetUnit: 'g/L', min: 0, max: 30,
+      synonyms: ['glucose','glc','당농도','포도당'],
+      unitConversions: { 'g/l':1,'g/dl':10,'mg/dl':0.01,'mg/l':0.001,'mm':0.18016,'mmol/l':0.18016,'mmol/l ':0.18016 }
+    },
+    Lactate: {
+      standard: 'Lactate', targetUnit: 'g/L', min: 0, max: 20,
+      synonyms: ['lactate','lac','젖산'],
+      unitConversions: { 'g/l':1,'mg/dl':0.01,'mg/l':0.001,'mm':0.09008,'mmol/l':0.09008 }
+    },
+    Glutamine: {
+      standard: 'Glutamine', targetUnit: 'mmol/L', min: 0, max: 15,
+      synonyms: ['glutamine','gln','글루타민'],
+      unitConversions: { 'mmol/l':1,'mm':1,'g/l':6.842 }
+    },
+    Glutamate: {
+      standard: 'Glutamate', targetUnit: 'mmol/L', min: 0, max: 15,
+      synonyms: ['glutamate','glu','글루탐산'],
+      unitConversions: { 'mmol/l':1,'mm':1,'g/l':6.797 }
+    },
+    Ammonium: {
+      standard: 'Ammonium', targetUnit: 'mmol/L', min: 0, max: 30,
+      synonyms: ['nh4+','ammonium','암모늄','nh4'],
+      unitConversions: { 'mmol/l':1,'mm':1,'mg/l':0.0554 }
+    },
+    Osmolality: {
+      standard: 'Osmolality', targetUnit: 'mOsm/kg', min: 150, max: 600,
+      synonyms: ['osm','osmolality','삼투압'],
+      unitConversions: { 'mosm/kg':1,'mosm':1 }
+    },
+    pH: {
+      standard: 'pH', targetUnit: 'pH', min: 5.5, max: 8.5,
+      synonyms: ['ph','수소이온농도'],
+      unitConversions: { 'ph':1 }
+    },
+    DO: {
+      standard: 'DO', targetUnit: '%', min: 0, max: 120,
+      synonyms: ['do','dissolved oxygen','용존산소'],
+      unitConversions: { '%':1 }
+    },
+    Titer: {
+      standard: 'Titer', targetUnit: 'mg/L', min: 0, max: 20000,
+      synonyms: ['titer','antibody','생산량','igg','protein titer','타이터'],
+      unitConversions: { 'mg/l':1,'ug/ml':1,'g/l':1000 }
+    },
+    LDH: {
+      standard: 'LDH', targetUnit: 'U/L', min: 0, max: 5000,
+      synonyms: ['ldh','lactate dehydrogenase'],
+      unitConversions: { 'u/l':1 }
+    }
+  };
+
+  const ALIAS_RULES = {
+    cellLines: [
+      { pattern: /cho[\s_-]*k1/i, standard: 'CHO-K1' },
+      { pattern: /cho[\s_-]*dg44/i, standard: 'CHO-DG44' },
+      { pattern: /cho[\s_-]*s\b/i, standard: 'CHO-S' },
+      { pattern: /hek[\s_-]*293/i, standard: 'HEK293' },
+      { pattern: /vero/i, standard: 'Vero' },
+      { pattern: /jurkat/i, standard: 'Jurkat' }
+    ],
+    vessels: [
+      { pattern: /shake[\s_-]*flask|shaker|^\s*sf\s*$/i, standard: 'Shake Flask' },
+      { pattern: /5\s*l[\s_-]*bioreactor/i, standard: '5L-Bioreactor' },
+      { pattern: /2\s*l[\s_-]*bioreactor/i, standard: '2L-Bioreactor' },
+      { pattern: /ambr[\s_-]*250/i, standard: 'Ambr 250' },
+      { pattern: /ambr[\s_-]*15/i, standard: 'Ambr 15' },
+      { pattern: /bioreactor|bio-reactor|배양기|리액터/i, standard: 'Bioreactor' },
+      { pattern: /well[\s_-]*plate|plate|플레이트/i, standard: 'Multi-Well Plate' },
+      { pattern: /wave/i, standard: 'Wave Bioreactor' }
+    ]
+  };
+
+  const TARGET_IDENTIFIERS = [
+    { key:'Experiment_ID', label:'실험/배치 식별자', required:true, synonyms:['exp','experiment','batch','run','실험','배치','lot','id','sample','sample id','batch_no','실험번호'] },
+    { key:'Culture_Day', label:'배양 경과일수', required:false, synonyms:['day','time(day)','경과일','배양일','일차','age','duration','elapsed_hours','elapsed hours','hours','배양일차'] },
+    { key:'Sample_Date', label:'샘플링 일시', required:false, synonyms:['date','time','datetime','날짜','일자','측정일','timestamp','측정일시','sampling date'] },
+    { key:'Cell_Line', label:'세포주 명칭', required:false, synonyms:['cell','cellline','cell_line','세포주','host','clone','strain','host cell'] },
+    { key:'Vessel_Group', label:'용기/조건 그룹', required:false, synonyms:['vessel','bioreactor','flask','group','condition','조건','처리구','배양기','배양용기','feed_strategy','condition group'] }
+  ];
+
+  // =========================================================================
+  // STATE
+  // =========================================================================
+  const state = {
+    currentStep: 1, files: [], activeFileId: null,
+    rawHarmonizedData: [], harmonizedData: [], wideData: [],
+    filteredData: [], viewMode: 'long', currentPage: 1, pageSize: 50, chartInstance: null,
+    options: { checkOutliers: true, outlierAction: 'flag', normalizeUnits: true, normalizeStrings: true, missingStrategy: 'keep_null' }
+  };
+
+  // =========================================================================
+  // INIT
+  // =========================================================================
+  document.addEventListener('DOMContentLoaded', () => {
+    setupDropzone(); setupEventListeners(); loadPresetsFromStorage();
+  });
+
+  function setupEventListeners() {
+    document.getElementById('btn-goto-step-2').addEventListener('click', () => switchStep(2));
+    document.getElementById('btn-execute-harmonization').addEventListener('click', executeHarmonization);
+    document.getElementById('btn-load-demo').addEventListener('click', loadDemoDatasets);
+    document.getElementById('btn-reset-all').addEventListener('click', resetAll);
+    document.getElementById('btn-clear-files').addEventListener('click', clearFiles);
+    document.getElementById('btn-auto-map-all').addEventListener('click', autoMapAllFiles);
+    document.getElementById('select-active-sheet').addEventListener('change', handleSheetChange);
+    document.getElementById('btn-apply-header-row').addEventListener('click', handleHeaderRowChange);
+    document.getElementById('btn-select-all-params').addEventListener('click', () => toggleAllParamCheckboxes(true));
+    document.getElementById('btn-deselect-all-params').addEventListener('click', () => toggleAllParamCheckboxes(false));
+    document.getElementById('btn-save-preset').addEventListener('click', savePreset);
+    document.getElementById('btn-load-preset').addEventListener('click', applySelectedPreset);
+
+    document.getElementById('cfg-check-outliers').addEventListener('change', e => state.options.checkOutliers = e.target.checked);
+    document.getElementById('cfg-outlier-action').addEventListener('change', e => state.options.outlierAction = e.target.value);
+    document.getElementById('cfg-normalize-units').addEventListener('change', e => state.options.normalizeUnits = e.target.checked);
+    document.getElementById('cfg-normalize-strings').addEventListener('change', e => state.options.normalizeStrings = e.target.checked);
+    document.getElementById('cfg-missing-strategy').addEventListener('change', e => {
+      state.options.missingStrategy = e.target.value;
+      document.getElementById('select-step3-interpolation').value = e.target.value;
+    });
+
+    document.getElementById('btn-view-long').addEventListener('click', () => setViewMode('long'));
+    document.getElementById('btn-view-wide').addEventListener('click', () => setViewMode('wide'));
+
+    document.getElementById('filter-search').addEventListener('input', applyFilters);
+    document.getElementById('filter-quality').addEventListener('change', applyFilters);
+    document.getElementById('filter-param').addEventListener('change', applyFilters);
+    document.getElementById('filter-experiment').addEventListener('change', applyFilters);
+    document.getElementById('select-step3-interpolation').addEventListener('change', e => {
+      state.options.missingStrategy = e.target.value;
+      document.getElementById('cfg-missing-strategy').value = e.target.value;
+      recalculateHarmonization();
+    });
+
+    document.getElementById('btn-download-excel').addEventListener('click', exportToExcel);
+    document.getElementById('btn-download-csv').addEventListener('click', exportToCSV);
+    document.getElementById('btn-toggle-chart').addEventListener('click', toggleChartSection);
+    document.getElementById('select-chart-param').addEventListener('change', updateTrendChart);
+
+    document.getElementById('btn-page-prev').addEventListener('click', () => {
+      if (state.currentPage > 1) { state.currentPage--; renderMainTable(); }
+    });
+    document.getElementById('btn-page-next').addEventListener('click', () => {
+      const max = Math.ceil(state.filteredData.length / state.pageSize) || 1;
+      if (state.currentPage < max) { state.currentPage++; renderMainTable(); }
+    });
+  }
+
+  function showToast(msg) {
+    const toast = document.getElementById('toast');
+    document.getElementById('toast-msg').textContent = msg;
+    toast.classList.remove('translate-y-20','opacity-0','pointer-events-none');
+    setTimeout(() => toast.classList.add('translate-y-20','opacity-0','pointer-events-none'), 3500);
+  }
+
+  // =========================================================================
+  // STEP NAVIGATION
+  // =========================================================================
+  function switchStep(step) {
+    if (step === 2 && state.files.length === 0) { showToast('먼저 파일을 업로드해주세요.'); return; }
+    if (step === 3 && state.harmonizedData.length === 0) executeHarmonization();
+    state.currentStep = step;
+    for (let i = 1; i <= 3; i++) {
+      const badge = document.getElementById(`step-badge-${i}`);
+      const label = document.getElementById(`step-label-${i}`);
+      const section = document.getElementById(`step-section-${i}`);
+      if (i < step) {
+        badge.className = 'w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-sm shadow-sm';
+        badge.innerHTML = '✓'; label.className = 'text-xs font-bold text-emerald-700 block'; section.classList.add('hidden');
+      } else if (i === step) {
+        badge.className = 'w-8 h-8 rounded-full bg-teal-600 text-white flex items-center justify-center font-bold text-sm shadow-sm ring-4 ring-teal-100';
+        badge.textContent = i; label.className = 'text-xs font-bold text-teal-700 block'; section.classList.remove('hidden');
+      } else {
+        badge.className = 'w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm';
+        badge.textContent = i; label.className = 'text-xs font-medium text-slate-500 block'; section.classList.add('hidden');
+      }
+    }
+    if (step === 2) { renderFileTabs(); renderMappingPanel(); }
+    else if (step === 3) updateStep3UI();
+  }
+
+  // =========================================================================
+  // FILE UPLOAD
+  // =========================================================================
+  function setupDropzone() {
+    const dz = document.getElementById('dropzone');
+    const fi = document.getElementById('file-input');
+    dz.addEventListener('click', () => fi.click());
+    ['dragenter','dragover'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.add('border-teal-600','bg-teal-50/50'); }));
+    ['dragleave','drop'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); dz.classList.remove('border-teal-600','bg-teal-50/50'); }));
+    dz.addEventListener('drop', e => { if (e.dataTransfer.files.length) processUploadedFiles(e.dataTransfer.files); });
+    fi.addEventListener('change', e => { if (e.target.files.length) processUploadedFiles(e.target.files); fi.value = ''; });
+  }
+
+  async function processUploadedFiles(fileList) {
+    let added = 0;
+    for (const file of fileList) {
+      try { const fd = await parseExcelOrCsvFile(file); state.files.push(fd); added++; }
+      catch (err) { alert(`[${file.name}] 읽기 오류: ${err.message}`); }
+    }
+    if (added) {
+      if (!state.activeFileId) state.activeFileId = state.files[0].id;
+      updateFileListUI(); showToast(`${added}개 파일이 로드되었습니다.`);
+    }
+  }
+
+  function parseExcelOrCsvFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const wb = XLSX.read(new Uint8Array(e.target.result), { type:'array', cellDates:true, cellNF:false });
+          const first = wb.SheetNames[0];
+          const obj = {
+            id: 'file_' + Math.random().toString(36).substr(2,9), name: file.name,
+            size: (file.size/1024).toFixed(1) + ' KB',
+            uploadTimestamp: new Date().toISOString().replace('T',' ').slice(0,19),
+            templateVersion: 'v2.0-Harmonized',
+            workbook: wb, sheets: wb.SheetNames, activeSheet: first,
+            headerRow: 1, columns: [], rows: [], mapping: { identifiers:{}, paramColumns:[], units:{} }
+          };
+          parseSheetData(obj, first, 1); autoDetectMapping(obj); resolve(obj);
+        } catch (err) { reject(err); }
+      };
+      reader.onerror = reject; reader.readAsArrayBuffer(file);
+    });
+  }
+
+  function parseSheetData(fileObj, sheetName, headerRowIdx = 1) {
+    fileObj.activeSheet = sheetName; fileObj.headerRow = headerRowIdx;
+    const ws = fileObj.workbook.Sheets[sheetName]; if (!ws) return;
+    const rawRows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw:false });
+    if (!rawRows || !rawRows.length) { fileObj.columns = []; fileObj.rows = []; return; }
+    const hIdx = headerRowIdx - 1;
+    fileObj.columns = (rawRows[hIdx] || []).map((c,i) => { const t = String(c||'').trim(); return t || `Column_${i+1}`; });
+    fileObj.rows = rawRows.slice(hIdx + 1).filter(r => r.some(c => String(c).trim() !== ''));
+  }
+
+  // =========================================================================
+  // SMART MAPPING
+  // =========================================================================
+  function autoDetectMapping(fileObj) {
+    const cols = fileObj.columns; const usedCols = new Set();
+    const identifiers = {}, paramColumns = [], units = {};
+
+    TARGET_IDENTIFIERS.forEach(target => {
+      let bestMatch = null, bestScore = -1;
+      cols.forEach(col => {
+        if (usedCols.has(col)) return;
+        const cc = col.toLowerCase().replace(/[^a-z0-9가-힣]/g,'');
+        target.synonyms.forEach(syn => {
+          const cs = syn.toLowerCase().replace(/[^a-z0-9가-힣]/g,'');
+          if (cc === cs && bestScore < 100) { bestScore=100; bestMatch=col; }
+          else if (cc.includes(cs) && bestScore < 80) { bestScore=80; bestMatch=col; }
+        });
+      });
+      if (bestMatch) { identifiers[target.key] = bestMatch; usedCols.add(bestMatch); }
+      else identifiers[target.key] = '';
+    });
+
+    if (!identifiers['Experiment_ID'] && cols.length > 0 && !usedCols.has(cols[0])) {
+      identifiers['Experiment_ID'] = cols[0]; usedCols.add(cols[0]);
+    }
+
+    cols.forEach(col => {
+      if (usedCols.has(col)) return;
+      const cc = col.toLowerCase(); let isParam = false, matchedUnit = '';
+      for (const rule of Object.values(PARAM_RULES)) {
+        if (rule.synonyms.some(s => cc.includes(s.toLowerCase()))) { isParam = true; matchedUnit = rule.targetUnit; break; }
+      }
+      const um = col.match(/\(([^)]+)\)|\[([^\]]+)\]/);
+      if (um) matchedUnit = um[1] || um[2] || matchedUnit;
+      if (!isParam && fileObj.rows.length > 0) {
+        const ci = cols.indexOf(col), sr = fileObj.rows.slice(0,10);
+        const nc = sr.filter(r => { const v=r[ci]; return v!==undefined && v!=='' && !isNaN(Number(String(v).replace(/,/g,''))); }).length;
+        if (nc >= Math.ceil(sr.length * 0.5)) isParam = true;
+      }
+      if (isParam) { paramColumns.push(col); if (matchedUnit) units[col] = matchedUnit; }
+    });
+
+    fileObj.mapping = { identifiers, paramColumns, units };
+  }
+
+  function autoMapAllFiles() {
+    state.files.forEach(f => autoDetectMapping(f)); renderMappingPanel(); showToast('전체 파일 스마트 자동 매핑 재실행 완료.');
+  }
+
+  // =========================================================================
+  // DEMO DATASETS
+  // =========================================================================
+  function loadDemoDatasets() {
+    const now = new Date().toISOString().replace('T',' ').slice(0,19);
+    const resA = [
+      ['실험번호','배양일차','측정일시','세포주','배양용기','생존율(%)','생세포수(x10^6/mL)','포도당(g/L)','젖산(g/L)','pH'],
+      ['EXP-24-001','0','2026-03-01','CHO-K1','5L-Bioreactor','98.5','0.45','6.20','0.15','7.15'],
+      ['EXP-24-001','1','2026-03-02','CHO-K1','5L-Bioreactor','97.8','0.92','5.80','0.48','7.10'],
+      ['EXP-24-001','3','2026-03-04','CHO-K1','5L-Bioreactor','96.2','3.80','4.30','1.65','7.05'],
+      ['EXP-24-001','5','2026-03-06','CHO-K1','5L-Bioreactor','94.0','12.4','2.80','2.90','6.95'],
+      ['EXP-24-001','7','2026-03-08','CHO-K1','5L-Bioreactor','88.5','18.1','1.20','3.80','6.90'],
+      ['EXP-24-001','10','2026-03-11','CHO-K1','5L-Bioreactor','76.0','14.2','0.50','4.20','6.85']
+    ];
+    // 연구원B: 10^5 cells/mL 단위, Glucose(mM), < LOD 결측치, Viability 104.5% 이상치, 음수 Glucose
+    const resB = [
+      ['Sample ID','Culture Day','Sampling Date','Host Cell','Condition Group','Live %','VCD (10^5 cells/mL)','Glucose (mM)','Lac (g/L)','Titer (mg/L)','Osm (mOsm/kg)'],
+      ['EXP-24-002','Day 0','2026-03-05','hek 293','shake flask','104.5','3.8','30.5','0.10','< LOD','290'],
+      ['EXP-24-002','Day 2','2026-03-07','hek 293','shake flask','98.0','18.5','26.6','0.80','45','295'],
+      ['EXP-24-002','Day 4','2026-03-09','hek 293','shake flask','95.4','69.0','17.7','2.10','180','310'],
+      ['EXP-24-002','Day 6','2026-03-11','HEK293','shake flask','91.2','145.0','9.9','3.20','450','330'],
+      ['EXP-24-002','Day 8','2026-03-13','HEK-293','shake flask','82.0','112.0','-0.5','4.00','720','345']
+    ];
+    // 연구원C: Elapsed Hours(0h, 48h, 96h...), 소문자 'cho k1' 표기, Ammonium mM
+    const resC = [
+      ['Batch_No','Elapsed_Hours','Date','Clone','Feed_Strategy','Viability','VCD','Glucose','Ammonium(mM)','DO(%)'],
+      ['EXP-24-003','0h','2026-03-10','cho k1','Feed-A','98.9','0.50','6.5','0.5','100'],
+      ['EXP-24-003','48h','2026-03-12','cho k1','Feed-A','97.5','2.10','5.1','1.2','80'],
+      ['EXP-24-003','96h','2026-03-14','CHO-K1','Feed-A','96.0','8.40','3.8','2.5','60'],
+      ['EXP-24-003','144h','2026-03-16','CHO-K1','Feed-A','93.5','16.8','4.5','3.8','50'],
+      ['EXP-24-003','192h','2026-03-18','CHO_K1','Feed-A','86.0','19.5','2.1','5.2','45'],
+      ['EXP-24-003','240h','2026-03-20','CHO-K1','Feed-A','79.2','15.0','1.0','6.8','40']
+    ];
+    const makeWb = (d, s) => { const ws=XLSX.utils.aoa_to_sheet(d); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,s); return wb; };
+    const demoFiles = [
+      { id:'demo_1', name:'연구원A_바이오리액터_EXP24-001.xlsx', size:'14.2 KB', uploadTimestamp:now, templateVersion:'v2.0-Bioreactor',
+        workbook:makeWb(resA,'Bioreactor_Data'), sheets:['Bioreactor_Data'], activeSheet:'Bioreactor_Data', headerRow:1, columns:[], rows:[], mapping:{} },
+      { id:'demo_2', name:'연구원B_플라스크_EXP24-002.xlsx', size:'11.8 KB', uploadTimestamp:now, templateVersion:'v2.0-ShakerFlask',
+        workbook:makeWb(resB,'Daily_Sampling'), sheets:['Daily_Sampling'], activeSheet:'Daily_Sampling', headerRow:1, columns:[], rows:[], mapping:{} },
+      { id:'demo_3', name:'연구원C_FedBatch_FeedA_EXP24-003.csv', size:'8.4 KB', uploadTimestamp:now, templateVersion:'v2.0-FedBatch',
+        workbook:makeWb(resC,'Sheet1'), sheets:['Sheet1'], activeSheet:'Sheet1', headerRow:1, columns:[], rows:[], mapping:{} }
+    ];
+    demoFiles.forEach(df => { parseSheetData(df, df.activeSheet, 1); autoDetectMapping(df); });
+    state.files = demoFiles; state.activeFileId = 'demo_1';
+    updateFileListUI(); showToast('3개의 실무형 세포배양 데모 데이터셋이 로드되었습니다!');
+  }
+
+  function resetAll() {
+    if (!confirm('모든 데이터와 설정을 초기화하시겠습니까?')) return;
+    state.files=[]; state.activeFileId=null; state.rawHarmonizedData=[];
+    state.harmonizedData=[]; state.wideData=[]; state.filteredData=[]; state.currentPage=1;
+    if (state.chartInstance) { state.chartInstance.destroy(); state.chartInstance=null; }
+    updateFileListUI(); switchStep(1); showToast('초기화되었습니다.');
+  }
+  function clearFiles() { state.files=[]; state.activeFileId=null; updateFileListUI(); }
+
+  // =========================================================================
+  // STEP 1 UI
+  // =========================================================================
+  function updateFileListUI() {
+    const c = document.getElementById('file-list-container');
+    document.getElementById('file-count-badge').textContent = `${state.files.length}개 파일`;
+    document.getElementById('btn-goto-step-2').disabled = state.files.length === 0;
+    if (!state.files.length) {
+      c.innerHTML = '<div class="p-6 text-center text-slate-400 text-sm">업로드된 파일이 없습니다. 파일을 추가하거나 데모 데이터셋을 불러오세요.</div>';
+      document.getElementById('btn-clear-files').classList.add('hidden'); return;
+    }
+    document.getElementById('btn-clear-files').classList.remove('hidden'); c.innerHTML = '';
+    state.files.forEach(f => {
+      const el = document.createElement('div');
+      el.className = 'p-4 flex items-center justify-between hover:bg-slate-50 transition';
+      const mp = (f.mapping.paramColumns||[]).length;
+      el.innerHTML = `<div class="flex items-center space-x-3 overflow-hidden">
+        <div class="w-9 h-9 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center font-bold text-xs shrink-0">${f.name.endsWith('.csv')?'CSV':'XLS'}</div>
+        <div class="overflow-hidden">
+          <div class="text-xs font-bold text-slate-800 truncate" title="${f.name}">${f.name}</div>
+          <div class="text-[11px] text-slate-400 flex items-center space-x-2 mt-0.5">
+            <span>${f.size}</span><span>&bull;</span><span>시트: ${f.sheets.length}개</span><span>&bull;</span><span>${f.rows.length}행</span>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2 shrink-0">
+        <span class="badge ${mp>0?'bg-teal-50 text-teal-700 border border-teal-200':'bg-amber-50 text-amber-700 border border-amber-200'}">${mp>0?`${mp}개 파라미터 감지`:'매핑 필요'}</span>
+        <button onclick="removeFile('${f.id}')" class="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+        </button>
+      </div>`;
+      c.appendChild(el);
+    });
+  }
+  function removeFile(id) {
+    state.files = state.files.filter(f=>f.id!==id);
+    if (state.activeFileId===id) state.activeFileId = state.files[0]?.id||null;
+    updateFileListUI();
+  }
+
+  // =========================================================================
+  // STEP 2: MAPPING UI
+  // =========================================================================
+  function getActiveFile() { return state.files.find(f=>f.id===state.activeFileId)||state.files[0]; }
+
+  function renderFileTabs() {
+    const bar = document.getElementById('file-tabs-bar'); bar.innerHTML = '';
+    state.files.forEach(f => {
+      const btn = document.createElement('button');
+      const isActive = f.id === state.activeFileId;
+      btn.className = `px-3.5 py-1.5 text-xs font-semibold rounded-xl transition shrink-0 ${isActive?'bg-teal-600 text-white shadow-sm':'bg-slate-100 hover:bg-slate-200 text-slate-700'}`;
+      btn.innerHTML = `<span class="truncate max-w-[160px]">${f.name}</span>`;
+      btn.onclick = () => { state.activeFileId=f.id; renderFileTabs(); renderMappingPanel(); };
+      bar.appendChild(btn);
+    });
+  }
+
+  function renderMappingPanel() {
+    const af = getActiveFile(); if (!af) return;
+    const ss = document.getElementById('select-active-sheet'); ss.innerHTML = '';
+    af.sheets.forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; if(s===af.activeSheet)o.selected=true; ss.appendChild(o); });
+    document.getElementById('input-header-row').value = af.headerRow||1;
+    const ic = document.getElementById('identifier-mappings-container'); ic.innerHTML = '';
+    TARGET_IDENTIFIERS.forEach(target => {
+      const div = document.createElement('div'); div.className='p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-1';
+      const cv = af.mapping.identifiers[target.key]||'';
+      div.innerHTML = `<div class="flex items-center justify-between">
+        <label class="text-[11px] font-bold text-slate-700">${target.key}${target.required?'<span class="text-red-500 ml-0.5">*</span>':''}</label>
+        <span class="text-[10px] text-slate-400">${target.label}</span>
+      </div>
+      <select id="map-target-${target.key}" class="w-full text-xs rounded-lg border-slate-300 bg-white p-1.5 font-medium focus:ring-teal-500 focus:border-teal-500">
+        <option value="">-- 매핑 안 함 --</option>
+        ${af.columns.map(c=>`<option value="${c}" ${c===cv?'selected':''}>${c}</option>`).join('')}
+      </select>`;
+      ic.appendChild(div);
+      div.querySelector('select').addEventListener('change', e => af.mapping.identifiers[target.key] = e.target.value);
+    });
+    renderParamChecklist(af); renderRawPreviewTable(af);
+  }
+
+  function renderParamChecklist(fileObj) {
+    const lc = document.getElementById('param-columns-checklist'); lc.innerHTML = '';
+    const idCols = new Set(Object.values(fileObj.mapping.identifiers).filter(Boolean));
+    const sel = new Set(fileObj.mapping.paramColumns||[]);
+    let cnt = 0;
+    fileObj.columns.forEach(col => {
+      const isId=idCols.has(col), isChecked=sel.has(col); if(isChecked)cnt++;
+      const lbl=document.createElement('label');
+      lbl.className=`flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition ${isId?'opacity-40 cursor-not-allowed bg-slate-100/50 border-slate-200':isChecked?'bg-amber-50/70 border-amber-200 text-amber-900 font-medium':'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'}`;
+      const unit = fileObj.mapping.units[col]||'';
+      lbl.innerHTML = `<div class="flex items-center space-x-2 overflow-hidden flex-1 mr-2">
+        <input type="checkbox" value="${col}" ${isChecked?'checked':''} ${isId?'disabled':''} class="rounded text-amber-600 w-3.5 h-3.5" />
+        <span class="truncate text-[11px]" title="${col}">${col}</span>
+      </div>
+      <input type="text" placeholder="단위(g/L)" value="${unit}" ${isId?'disabled':''} class="unit-input w-24 text-[10px] bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-right font-mono" />`;
+      lbl.querySelector('input[type=checkbox]').addEventListener('change', e => {
+        if(e.target.checked) { if(!fileObj.mapping.paramColumns.includes(col)) fileObj.mapping.paramColumns.push(col); }
+        else fileObj.mapping.paramColumns = fileObj.mapping.paramColumns.filter(c=>c!==col);
+        renderParamChecklist(fileObj);
+      });
+      lbl.querySelector('.unit-input').addEventListener('input', e => fileObj.mapping.units[col] = e.target.value.trim());
+      lc.appendChild(lbl);
+    });
+    document.getElementById('selected-param-count').textContent = `${fileObj.mapping.paramColumns.length}개 선택됨`;
+  }
+
+  function toggleAllParamCheckboxes(selectAll) {
+    const af = getActiveFile(); if (!af) return;
+    const idCols = new Set(Object.values(af.mapping.identifiers).filter(Boolean));
+    af.mapping.paramColumns = selectAll ? af.columns.filter(c=>!idCols.has(c)) : [];
+    renderParamChecklist(af);
+  }
+
+  function handleSheetChange(e) {
+    const af = getActiveFile(); if (!af) return;
+    parseSheetData(af, e.target.value, af.headerRow||1); autoDetectMapping(af); renderMappingPanel();
+  }
+  function handleHeaderRowChange() {
+    const af = getActiveFile(); if (!af) return;
+    const r = parseInt(document.getElementById('input-header-row').value,10)||1;
+    parseSheetData(af, af.activeSheet, r); autoDetectMapping(af); renderMappingPanel(); showToast(`헤더 ${r}행 적용됨.`);
+  }
+
+  function renderRawPreviewTable(fileObj) {
+    const t = document.getElementById('raw-preview-table'); t.innerHTML = '';
+    document.getElementById('preview-row-count').textContent = `총 ${fileObj.rows.length}행 (상위 5행 표시)`;
+    if (!fileObj.columns.length) { t.innerHTML='<tr><td class="p-3 text-center text-slate-400">데이터가 없습니다.</td></tr>'; return; }
+    const thead = document.createElement('thead'); thead.className='bg-slate-100 text-slate-700 sticky top-0';
+    const trh = document.createElement('tr');
+    fileObj.columns.forEach(c => { const th=document.createElement('th'); th.className='px-2.5 py-2 font-bold whitespace-nowrap border-b border-slate-200'; th.textContent=c; trh.appendChild(th); });
+    thead.appendChild(trh); t.appendChild(thead);
+    const tbody = document.createElement('tbody'); tbody.className='divide-y divide-slate-100 bg-white font-mono';
+    fileObj.rows.slice(0,5).forEach(row => {
+      const tr=document.createElement('tr');
+      fileObj.columns.forEach((c,i) => { const td=document.createElement('td'); td.className='px-2.5 py-1.5 whitespace-nowrap text-slate-600'; td.textContent=row[i]!==undefined?String(row[i]):''; tr.appendChild(td); });
+      tbody.appendChild(tr);
+    });
+    t.appendChild(tbody);
+  }
+
+  // =========================================================================
+  // PRESET / TEMPLATES
+  // =========================================================================
+  function savePreset() {
+    const af = getActiveFile(); if (!af) return;
+    const name = document.getElementById('input-preset-name').value.trim();
+    if (!name) { alert('템플릿 이름을 입력해주세요.'); return; }
+    const presets = JSON.parse(localStorage.getItem('cch_presets_v2')||'{}');
+    presets[name] = { identifiers:af.mapping.identifiers, paramColumns:af.mapping.paramColumns, units:af.mapping.units };
+    localStorage.setItem('cch_presets_v2', JSON.stringify(presets));
+    loadPresetsFromStorage(); document.getElementById('input-preset-name').value=''; showToast(`템플릿 [${name}] 저장됨.`);
+  }
+  function loadPresetsFromStorage() {
+    const sel = document.getElementById('select-saved-presets'); sel.innerHTML='<option value="">-- 저장된 템플릿 선택 --</option>';
+    const presets = JSON.parse(localStorage.getItem('cch_presets_v2')||'{}');
+    Object.keys(presets).forEach(n => { const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o); });
+  }
+  function applySelectedPreset() {
+    const name = document.getElementById('select-saved-presets').value; if (!name) return;
+    const preset = JSON.parse(localStorage.getItem('cch_presets_v2')||'{}')[name]; if (!preset) return;
+    const af = getActiveFile(); if (!af) return;
+    af.mapping = JSON.parse(JSON.stringify(preset)); renderMappingPanel(); showToast(`템플릿 [${name}] 적용됨.`);
+  }
+
+  // =========================================================================
+  // DATA PREPROCESSING HELPERS
+  // =========================================================================
+  function normalizeDay(val) {
+    if (val===undefined||val===null||String(val).trim()==='') return 0;
+    const s = String(val).trim();
+    const hm = s.match(/^(\d+(\.\d+)?)\s*(h|hr|hrs|hours|시간)$/i);
+    if (hm) return Math.round((parseFloat(hm[1])/24)*100)/100;
+    const nm = s.match(/-?\d+(\.\d+)?/);
+    return nm ? parseFloat(nm[0]) : 0;
+  }
+  function normalizeDate(val) {
+    if (!val) return '';
+    if (val instanceof Date) return val.toISOString().split('T')[0];
+    const s = String(val).trim();
+    const d = new Date(s);
+    return (!isNaN(d.getTime())&&s.length>=8) ? d.toISOString().split('T')[0] : s;
+  }
+  function normalizeStringEntity(val, type) {
+    if (!val||String(val).trim()==='') return 'N/A';
+    const s = String(val).trim();
+    if (!state.options.normalizeStrings) return s;
+    const rules = type==='cellLine' ? ALIAS_RULES.cellLines : ALIAS_RULES.vessels;
+    for (const r of rules) { if (r.pattern.test(s)) return r.standard; }
+    return s;
+  }
+  function getParamRule(colName) {
+    const lower = colName.toLowerCase();
+    for (const rule of Object.values(PARAM_RULES)) {
+      if (rule.synonyms.some(s => lower.includes(s.toLowerCase()))) return rule;
+    }
+    return null;
+  }
+  function normalizeParamName(colName) {
+    const r = getParamRule(colName); if (r) return r.standard;
+    return colName.replace(/\([^)]*\)|\[[^\]]*\]/g,'').trim()||colName;
+  }
+  function isMissingValue(rawVal) {
+    if (rawVal===undefined||rawVal===null) return true;
+    const s = String(rawVal).trim().toLowerCase();
+    return s===''||['n/a','na','nd','-','null','nan','< lod','<lod','lod','n.d.','not detected'].includes(s);
+  }
+
+  // =========================================================================
+  // CORE HARMONIZATION ENGINE
+  // =========================================================================
+  function executeHarmonization() {
+    if (!state.files.length) { showToast('통합할 파일이 없습니다.'); return; }
+    const rows = [];
+    state.files.forEach(fileObj => {
+      const { identifiers, paramColumns, units } = fileObj.mapping;
+      const cols = fileObj.columns;
+      const expIdx=cols.indexOf(identifiers['Experiment_ID']), dayIdx=cols.indexOf(identifiers['Culture_Day']),
+            dateIdx=cols.indexOf(identifiers['Sample_Date']), cellIdx=cols.indexOf(identifiers['Cell_Line']),
+            vesselIdx=cols.indexOf(identifiers['Vessel_Group']);
+      fileObj.rows.forEach((row, rIdx) => {
+        let expId = expIdx!==-1&&row[expIdx]!==undefined ? String(row[expIdx]).trim() : '';
+        if (!expId) expId = fileObj.name.replace(/\.[^/.]+$/,'');
+        const cultureDay = normalizeDay(dayIdx!==-1?row[dayIdx]:'');
+        const sampleDate = normalizeDate(dateIdx!==-1?row[dateIdx]:'');
+        const cellLine = normalizeStringEntity(cellIdx!==-1?row[cellIdx]:'', 'cellLine');
+        const vesselGroup = normalizeStringEntity(vesselIdx!==-1?row[vesselIdx]:'', 'vessel');
+
+        (paramColumns||[]).forEach(pCol => {
+          const pIdx=cols.indexOf(pCol); if (pIdx===-1) return;
+          const rawVal=row[pIdx], pRule=getParamRule(pCol);
+          const cleanParamName=normalizeParamName(pCol);
+          let rawUnit=units[pCol]||'';
+          if (!rawUnit) { const m=pCol.match(/\(([^)]+)\)|\[([^\]]+)\]/); if(m) rawUnit=m[1]||m[2]||''; }
+          if (!rawUnit&&pRule) rawUnit=pRule.targetUnit;
+
+          const isMissing=isMissingValue(rawVal);
+          let cleanValue=null, originalNum=null, standardUnit=rawUnit, isUnitConverted=false;
+          let validationStatus='Valid', outlierFlag='N';
+
+          if (!isMissing) {
+            const num = parseFloat(String(rawVal).replace(/,/g,'').trim());
+            if (!isNaN(num)) {
+              originalNum = Math.round(num*10000)/10000; cleanValue=originalNum;
+              if (state.options.normalizeUnits&&pRule?.unitConversions) {
+                const uk=rawUnit.toLowerCase().trim();
+                let factor=null;
+                for (const [k,v] of Object.entries(pRule.unitConversions)) { if(uk===k||uk.replace(/\s/g,'')=== k.replace(/\s/g,'')) {factor=v;break;} }
+                if (factor!==null&&factor!==1) { cleanValue=Math.round(originalNum*factor*10000)/10000; standardUnit=pRule.targetUnit; isUnitConverted=true; }
+                else if (pRule.targetUnit) standardUnit=pRule.targetUnit;
+              }
+              if (state.options.checkOutliers&&pRule) {
+                if (cleanValue<0) { validationStatus='Negative_Warning'; outlierFlag='Y'; }
+                else if (pRule.min!==undefined&&(cleanValue<pRule.min||cleanValue>pRule.max)) { validationStatus='Outlier_Warning'; outlierFlag='Y'; }
+              }
+            } else { validationStatus='Missing'; }
+          } else { validationStatus='Missing'; }
+
+          rows.push({
+            Experiment_ID:expId, Culture_Day:cultureDay, Sample_Date:sampleDate,
+            Cell_Line:cellLine, Vessel_Group:vesselGroup, Parameter:cleanParamName,
+            Value:cleanValue, Unit:standardUnit, Original_Value:originalNum!==null?originalNum:String(rawVal||''),
+            Original_Unit:rawUnit, Validation_Status:validationStatus, Outlier_Flag:outlierFlag,
+            Unit_Converted:isUnitConverted, Source_File:fileObj.name, Source_Sheet:fileObj.activeSheet,
+            Upload_Time:fileObj.uploadTimestamp, Template_Version:fileObj.templateVersion||'v2.0', Row_Index:rIdx+1
+          });
+        });
+      });
+    });
+    state.rawHarmonizedData = rows; recalculateHarmonization();
+    if (state.currentStep!==3) { switchStep(3); }
+    else { updateStep3UI(); }
+    showToast(`총 ${state.harmonizedData.length}개 레코드 정제 완료!`);
+  }
+
+  function recalculateHarmonization() {
+    let data = [...state.rawHarmonizedData];
+    if (state.options.outlierAction==='exclude') data=data.filter(r=>r.Outlier_Flag!=='Y');
+    data = applyMissingStrategy(data, state.options.missingStrategy);
+    state.harmonizedData = data;
+    state.wideData = generateWideMatrix(data);
+    applyFilters();
+  }
+
+  function applyMissingStrategy(rows, strategy) {
+    if (strategy==='keep_null') return rows;
+    const groups = new Map();
+    rows.forEach(r => { const k=`${r.Experiment_ID}__${r.Parameter}`; if(!groups.has(k))groups.set(k,[]); groups.get(k).push(r); });
+    const result = [];
+    groups.forEach(gr => {
+      gr.sort((a,b)=>Number(a.Culture_Day)-Number(b.Culture_Day));
+      if (strategy==='zero') { gr.forEach(r=>{if(r.Value===null){r.Value=0;r.Interpolated=true;}}); }
+      else if (strategy==='ffill') { let last=null; gr.forEach(r=>{if(r.Value!==null)last=r.Value; else if(last!==null){r.Value=last;r.Interpolated=true;}}); }
+      else if (strategy==='linear') {
+        for (let i=0;i<gr.length;i++) {
+          if (gr[i].Value!==null) continue;
+          let pi=-1; for(let p=i-1;p>=0;p--){if(gr[p].Value!==null){pi=p;break;}}
+          let ni=-1; for(let n=i+1;n<gr.length;n++){if(gr[n].Value!==null){ni=n;break;}}
+          if (pi!==-1&&ni!==-1) {
+            const x0=Number(gr[pi].Culture_Day),y0=gr[pi].Value,x1=Number(gr[ni].Culture_Day),y1=gr[ni].Value,x=Number(gr[i].Culture_Day);
+            if (x1!==x0) { gr[i].Value=Math.round((y0+(y1-y0)/(x1-x0)*(x-x0))*10000)/10000; gr[i].Interpolated=true; }
+          } else if (pi!==-1){gr[i].Value=gr[pi].Value;gr[i].Interpolated=true;}
+          else if (ni!==-1){gr[i].Value=gr[ni].Value;gr[i].Interpolated=true;}
+        }
+      }
+      result.push(...gr);
+    });
+    return result;
+  }
+
+  function generateWideMatrix(longRows) {
+    const params = Array.from(new Set(longRows.map(r=>r.Parameter))).sort();
+    const rowMap = new Map();
+    longRows.forEach(r => {
+      const k=`${r.Experiment_ID}__${r.Culture_Day}__${r.Sample_Date}__${r.Cell_Line}__${r.Vessel_Group}__${r.Source_File}`;
+      if (!rowMap.has(k)) {
+        const obj={Experiment_ID:r.Experiment_ID,Culture_Day:r.Culture_Day,Sample_Date:r.Sample_Date,Cell_Line:r.Cell_Line,Vessel_Group:r.Vessel_Group,Source_File:r.Source_File,_hasOutlier:false};
+        params.forEach(p=>obj[p]=null); rowMap.set(k,obj);
+      }
+      const wr=rowMap.get(k); wr[r.Parameter]=r.Value; if(r.Outlier_Flag==='Y')wr._hasOutlier=true;
+    });
+    return Array.from(rowMap.values()).sort((a,b)=>a.Experiment_ID.localeCompare(b.Experiment_ID)||Number(a.Culture_Day)-Number(b.Culture_Day));
+  }
+
+  function setViewMode(mode) {
+    state.viewMode=mode; state.currentPage=1;
+    const btnL=document.getElementById('btn-view-long'), btnW=document.getElementById('btn-view-wide');
+    if (mode==='long') {
+      btnL.className='px-3 py-1.5 rounded-lg bg-white text-teal-800 font-bold shadow-xs transition flex items-center space-x-1';
+      btnW.className='px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition flex items-center space-x-1';
+    } else {
+      btnW.className='px-3 py-1.5 rounded-lg bg-white text-teal-800 font-bold shadow-xs transition flex items-center space-x-1';
+      btnL.className='px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition flex items-center space-x-1';
+    }
+    applyFilters();
+  }
+
+  // =========================================================================
+  // STEP 3 UI
+  // =========================================================================
+  function updateStep3UI() {
+    const total=state.harmonizedData.length, valid=state.harmonizedData.filter(r=>r.Validation_Status==='Valid').length,
+          outliers=state.harmonizedData.filter(r=>r.Outlier_Flag==='Y').length, converted=state.harmonizedData.filter(r=>r.Unit_Converted).length;
+    const expSet=new Set(state.harmonizedData.map(r=>r.Experiment_ID)), paramSet=new Set(state.harmonizedData.map(r=>r.Parameter));
+    document.getElementById('stat-total-rows').textContent=total.toLocaleString();
+    document.getElementById('stat-valid-rows').textContent=valid.toLocaleString();
+    document.getElementById('stat-outlier-rows').textContent=outliers.toLocaleString();
+    document.getElementById('stat-converted-units').textContent=converted.toLocaleString();
+    document.getElementById('stat-unique-experiments').textContent=expSet.size;
+    document.getElementById('stat-unique-params').textContent=`${paramSet.size}개 파라미터`;
+    document.getElementById('stat-file-summary').textContent=`${state.files.length}개 파일 통합 완료`;
+
+    const pf=document.getElementById('filter-param'), cp=document.getElementById('select-chart-param');
+    pf.innerHTML='<option value="all">모든 파라미터 전체</option>'; cp.innerHTML='';
+    Array.from(paramSet).sort().forEach(p=>{
+      const o1=document.createElement('option'); o1.value=p; o1.textContent=p; pf.appendChild(o1);
+      const o2=document.createElement('option'); o2.value=p; o2.textContent=p; cp.appendChild(o2);
+    });
+    const ef=document.getElementById('filter-experiment');
+    ef.innerHTML='<option value="all">모든 실험 전체</option>';
+    Array.from(expSet).sort().forEach(e=>{const o=document.createElement('option');o.value=e;o.textContent=e;ef.appendChild(o);});
+    applyFilters();
+  }
+
+  function applyFilters() {
+    const search=document.getElementById('filter-search').value.toLowerCase().trim();
+    const quality=document.getElementById('filter-quality').value;
+    const selParam=document.getElementById('filter-param').value;
+    const selExp=document.getElementById('filter-experiment').value;
+    if (state.viewMode==='long') {
+      state.filteredData=state.harmonizedData.filter(r=>{
+        if(quality==='valid'&&r.Validation_Status!=='Valid')return false;
+        if(quality==='outliers'&&r.Outlier_Flag!=='Y')return false;
+        if(selParam!=='all'&&r.Parameter!==selParam)return false;
+        if(selExp!=='all'&&r.Experiment_ID!==selExp)return false;
+        if(search&&!Object.values(r).some(v=>String(v).toLowerCase().includes(search)))return false;
+        return true;
+      });
+    } else {
+      state.filteredData=state.wideData.filter(r=>{
+        if(quality==='valid'&&r._hasOutlier)return false;
+        if(quality==='outliers'&&!r._hasOutlier)return false;
+        if(selExp!=='all'&&r.Experiment_ID!==selExp)return false;
+        if(search&&!Object.values(r).some(v=>String(v).toLowerCase().includes(search)))return false;
+        return true;
+      });
+    }
+    state.currentPage=1; renderMainTable(); updateTrendChart();
+  }
+
+  function renderMainTable() {
+    const t=document.getElementById('main-integrated-table'); t.innerHTML='';
+    const total=state.filteredData.length, maxPage=Math.ceil(total/state.pageSize)||1;
+    if(state.currentPage>maxPage)state.currentPage=maxPage;
+    const si=(state.currentPage-1)*state.pageSize, ei=Math.min(si+state.pageSize,total);
+    document.getElementById('pagination-info').textContent=`표시 중: ${total>0?si+1:0} - ${ei} / 총 ${total.toLocaleString()} 건 (${state.viewMode==='long'?'Long':'Wide'} 포맷)`;
+    document.getElementById('pagination-pages').textContent=`${state.currentPage} / ${maxPage}`;
+    if (!total) { t.innerHTML='<tbody><tr><td colspan="15" class="py-12 text-center text-slate-400">조건에 일치하는 데이터가 없습니다.</td></tr></tbody>'; return; }
+    const rows=state.filteredData.slice(si,ei);
+    if(state.viewMode==='long') renderLongTable(t,rows,si); else renderWideTable(t,rows,si);
+  }
+
+  function renderLongTable(t,rows,si) {
+    const th=document.createElement('thead'); th.className='bg-slate-100 text-slate-700 font-bold sticky top-0 z-10';
+    th.innerHTML=`<tr>
+      <th class="py-3 px-3">#</th><th class="py-3 px-3 whitespace-nowrap">Experiment_ID</th><th class="py-3 px-3">Culture_Day</th>
+      <th class="py-3 px-3">Sample_Date</th><th class="py-3 px-3">Cell_Line</th><th class="py-3 px-3">Vessel_Group</th>
+      <th class="py-3 px-3 bg-teal-50 text-teal-900">Parameter</th><th class="py-3 px-3 bg-teal-50 text-teal-900 text-right">Value (표준)</th>
+      <th class="py-3 px-3">Unit</th><th class="py-3 px-3 text-slate-500">Original (값/단위)</th>
+      <th class="py-3 px-3 text-center">품질 상태</th><th class="py-3 px-3 text-slate-400">Source_File</th>
+    </tr>`;
+    t.appendChild(th);
+    const tb=document.createElement('tbody'); tb.className='divide-y divide-slate-100 bg-white text-xs';
+    rows.forEach((r,i)=>{
+      const tr=document.createElement('tr'); tr.className='hover:bg-slate-50/80 transition';
+      let badge=`<span class="badge bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px]">Valid</span>`;
+      if(r.Validation_Status==='Negative_Warning') badge=`<span class="badge bg-rose-50 text-rose-700 border border-rose-200 text-[10px]">음수 경고</span>`;
+      else if(r.Validation_Status==='Outlier_Warning') badge=`<span class="badge bg-amber-50 text-amber-700 border border-amber-200 text-[10px]">이상치</span>`;
+      else if(r.Validation_Status==='Missing') badge=`<span class="badge bg-slate-100 text-slate-500 border border-slate-200 text-[10px]">미측정</span>`;
+      const dv=r.Value!==null?r.Value.toLocaleString():`<span class="text-slate-300 italic">null</span>`;
+      const orig=`${r.Original_Value!==null?r.Original_Value:'-'}${r.Original_Unit?` (${r.Original_Unit})`:''}`;
+      tr.innerHTML=`
+        <td class="py-2.5 px-3 text-slate-400 font-mono text-[11px]">${si+i+1}</td>
+        <td class="py-2.5 px-3 font-semibold text-slate-800">${esc(r.Experiment_ID)}</td>
+        <td class="py-2.5 px-3 font-mono font-semibold text-teal-700">${r.Culture_Day}</td>
+        <td class="py-2.5 px-3 font-mono text-slate-500">${esc(r.Sample_Date||'-')}</td>
+        <td class="py-2.5 px-3">${esc(r.Cell_Line)}</td>
+        <td class="py-2.5 px-3 text-slate-600">${esc(r.Vessel_Group)}</td>
+        <td class="py-2.5 px-3 font-bold text-teal-900 bg-teal-50/30">${esc(r.Parameter)}</td>
+        <td class="py-2.5 px-3 font-mono font-bold text-right bg-teal-50/30 ${r.Outlier_Flag==='Y'?'text-rose-600':'text-slate-900'}">${dv}${r.Interpolated?'<span class="text-[9px] text-teal-600 ml-1">[보간]</span>':''}</td>
+        <td class="py-2.5 px-3 font-mono text-slate-500 text-[11px]">${esc(r.Unit)}</td>
+        <td class="py-2.5 px-3 font-mono text-slate-400 text-[11px] max-w-[120px] truncate" title="${esc(orig)}">${esc(orig)}</td>
+        <td class="py-2.5 px-3 text-center">${badge}</td>
+        <td class="py-2.5 px-3 text-slate-400 text-[10px] truncate max-w-[100px]" title="${esc(r.Source_File)}">${esc(r.Source_File)}</td>`;
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+  }
+
+  function renderWideTable(t,rows,si) {
+    const params=Array.from(new Set(state.harmonizedData.map(r=>r.Parameter))).sort();
+    const th=document.createElement('thead'); th.className='bg-slate-100 text-slate-700 font-bold sticky top-0 z-10';
+    th.innerHTML=`<tr>
+      <th class="py-3 px-3">#</th><th class="py-3 px-3 whitespace-nowrap">Experiment_ID</th>
+      <th class="py-3 px-3 whitespace-nowrap">Culture_Day</th><th class="py-3 px-3 whitespace-nowrap">Sample_Date</th>
+      <th class="py-3 px-3 whitespace-nowrap">Cell_Line</th><th class="py-3 px-3 whitespace-nowrap">Vessel_Group</th>
+      ${params.map(p=>{const r=PARAM_RULES[p];return`<th class="py-3 px-3 bg-teal-50/70 text-teal-900 text-right whitespace-nowrap">${esc(p)}<span class="text-[10px] text-teal-600 block font-normal">${r?`(${r.targetUnit})`:''}</span></th>`;}).join('')}
+      <th class="py-3 px-3 text-slate-400 whitespace-nowrap">Source_File</th></tr>`;
+    t.appendChild(th);
+    const tb=document.createElement('tbody'); tb.className='divide-y divide-slate-100 bg-white text-xs';
+    rows.forEach((r,i)=>{
+      const tr=document.createElement('tr'); tr.className='hover:bg-slate-50/80 transition';
+      const cells=params.map(p=>r[p]!==null&&r[p]!==undefined?`<td class="py-2.5 px-3 text-right font-bold font-mono text-slate-800 bg-teal-50/20">${r[p].toLocaleString()}</td>`:`<td class="py-2.5 px-3 text-right text-slate-300">-</td>`).join('');
+      tr.innerHTML=`<td class="py-2.5 px-3 text-slate-400 font-mono text-[11px]">${si+i+1}</td>
+        <td class="py-2.5 px-3 font-semibold text-slate-800">${esc(r.Experiment_ID)}</td>
+        <td class="py-2.5 px-3 font-mono font-semibold text-teal-700">${r.Culture_Day}</td>
+        <td class="py-2.5 px-3 font-mono text-slate-500">${esc(r.Sample_Date||'-')}</td>
+        <td class="py-2.5 px-3">${esc(r.Cell_Line)}</td>
+        <td class="py-2.5 px-3 text-slate-600">${esc(r.Vessel_Group)}</td>
+        ${cells}
+        <td class="py-2.5 px-3 text-slate-400 text-[10px] truncate max-w-[100px]">${esc(r.Source_File)}</td>`;
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+  }
+
+  function esc(s) {
+    if(s===undefined||s===null)return'';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // =========================================================================
+  // EXPORT
+  // =========================================================================
+  function exportToExcel() {
+    if (!state.harmonizedData.length) { showToast('내보낼 데이터가 없습니다.'); return; }
+    const wb = XLSX.utils.book_new();
+    // Long Format Sheet
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.harmonizedData), 'Standard_Long_Format_DB');
+    // Wide Format Sheet
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.wideData.map(r=>{const c={...r};delete c._hasOutlier;return c;})), 'Pivoted_Wide_Format');
+    // Lineage Sheet
+    const lineage=state.files.map((f,i)=>({File_ID:i+1,File_Name:f.name,File_Size:f.size,Active_Sheet:f.activeSheet,Row_Count:f.rows.length,Mapped_Params:(f.mapping.paramColumns||[]).join(', '),Upload_Time:f.uploadTimestamp,Template_Version:f.templateVersion||'v2.0'}));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lineage), 'Data_Lineage');
+    const ts=new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `Harmonized_CellCulture_DB_${ts}.xlsx`);
+    showToast('통합 엑셀 (Long+Wide+Lineage 시트) 다운로드 완료!');
+  }
+
+  function exportToCSV() {
+    if (!state.harmonizedData.length) { showToast('내보낼 데이터가 없습니다.'); return; }
+    const src=state.viewMode==='long'?state.harmonizedData:state.wideData.map(r=>{const c={...r};delete c._hasOutlier;return c;});
+    const csv=XLSX.utils.sheet_to_csv(XLSX.utils.json_to_sheet(src));
+    const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download=`Harmonized_CellCulture_${state.viewMode.toUpperCase()}_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    showToast(`CSV (${state.viewMode.toUpperCase()}) 다운로드 완료!`);
+  }
+
+  // =========================================================================
+  // CHART
+  // =========================================================================
+  function toggleChartSection() {
+    const s=document.getElementById('chart-section'); s.classList.toggle('hidden');
+    if(!s.classList.contains('hidden')) updateTrendChart();
+  }
+  function updateTrendChart() {
+    const s=document.getElementById('chart-section'); if(s.classList.contains('hidden'))return;
+    const sp=document.getElementById('select-chart-param').value; if(!sp)return;
+    const ctx=document.getElementById('trendChart').getContext('2d');
+    const filt=state.harmonizedData.filter(r=>r.Parameter===sp&&r.Value!==null);
+    const exps=Array.from(new Set(filt.map(r=>r.Experiment_ID)));
+    const colors=['#0d9488','#2563eb','#d97706','#dc2626','#8b5cf6','#ec4899'];
+    const datasets=exps.map((exp,idx)=>{
+      const er=filt.filter(r=>r.Experiment_ID===exp).sort((a,b)=>Number(a.Culture_Day)-Number(b.Culture_Day));
+      return {
+        label:exp, data:er.map(r=>({x:Number(r.Culture_Day),y:r.Value,outlier:r.Outlier_Flag==='Y'})),
+        borderColor:colors[idx%colors.length], backgroundColor:colors[idx%colors.length], tension:0.25,
+        pointRadius:er.map(r=>r.Outlier_Flag==='Y'?7:4),
+        pointBackgroundColor:er.map(r=>r.Outlier_Flag==='Y'?'#ef4444':colors[idx%colors.length]),
+        pointHoverRadius:7
+      };
+    });
+    if(state.chartInstance){state.chartInstance.destroy();}
+    state.chartInstance=new Chart(ctx,{
+      type:'line', data:{datasets},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{
+          legend:{position:'top',labels:{boxWidth:12,font:{size:11}}},
+          tooltip:{callbacks:{
+            title:items=>`배양 경과일: Day ${items[0].parsed.x}`,
+            label:item=>`${item.dataset.label}: ${item.parsed.y}${item.dataset.data[item.dataIndex]?.outlier?' [이상치]':''}`
+          }}
+        },
+        scales:{
+          x:{type:'linear',title:{display:true,text:'Culture Day (배양 경과일)',font:{size:11,weight:'bold'}},grid:{color:'#f1f5f9'}},
+          y:{title:{display:true,text:sp,font:{size:11,weight:'bold'}},grid:{color:'#f1f5f9'}}
+        }
+      }
+    });
+  }
+  </script>
 </body>
 </html>

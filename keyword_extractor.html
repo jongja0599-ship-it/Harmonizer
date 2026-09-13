@@ -1,0 +1,2413 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>키워드 탐색 기반 데이터 자동 추출기 | CellCulture Harmonizer</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#ecfdf5', 100: '#d1fae5', 200: '#a7f3d0',
+              300: '#6ee7b7', 400: '#34d399', 500: '#10b981',
+              600: '#059669', 700: '#047857', 800: '#065f46', 900: '#064e3b',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- SheetJS (xlsx) CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <style>
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .glass-header { backdrop-filter: blur(12px); background-color: rgba(255,255,255,0.94); }
+    .badge { display: inline-flex; align-items: center; padding: 0.15rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+    .grid-cell { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; white-space: nowrap; }
+    .cell-highlight-keyword { background-color: #fef08a !important; color: #854d0e !important; font-weight: 700; border: 1.5px solid #eab308 !important; }
+    .cell-highlight-range { background-color: #d1fae5 !important; color: #065f46 !important; border: 1px dashed #10b981 !important; }
+    .cell-highlight-day { background-color: #e0e7ff !important; color: #3730a3 !important; border: 1px dashed #6366f1 !important; }
+    .cell-number { background-color: #f8fafc; color: #0f172a; }
+    .cell-string { background-color: #ffffff; color: #334155; }
+    .toggle-switch { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { width: 32px; height: 17px; background-color: #cbd5e1; border-radius: 9999px; transition: 0.2s; }
+    .toggle-slider:before { content: ''; position: absolute; height: 13px; width: 13px; left: 2px; bottom: 2px; background-color: white; border-radius: 50%; transition: 0.2s; }
+    .toggle-switch input:checked + .toggle-slider { background-color: #059669; }
+    .toggle-switch input:checked + .toggle-slider:before { transform: translateX(15px); }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased">
+
+  <!-- TOP NAVIGATION / HEADER -->
+  <header class="sticky top-0 z-40 glass-header border-b border-slate-200 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-md text-white">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-lg font-bold text-slate-900 leading-tight">CellCulture Keyword Extractor</h1>
+            <span class="badge bg-emerald-100 text-emerald-800 text-[10px] font-mono">Schema-Free v2.5</span>
+          </div>
+          <p class="text-xs text-slate-500 font-medium">키워드 탐색 기반 비정형 엑셀 데이터 자동 인식 &middot; 바운딩 박스 추출 &middot; 표준 DB화</p>
+        </div>
+      </div>
+      
+      <div class="flex items-center space-x-2.5">
+        <!-- Switch to standard mapping -->
+        <a href="index.html" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 transition flex items-center shadow-xs">
+          <svg class="w-3.5 h-3.5 mr-1 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+          </svg>
+          고정 컬럼 매핑 모드로 전환
+        </a>
+
+        <!-- Demo dropdown button -->
+        <div class="relative inline-block text-left">
+          <button id="btn-demo-menu" onclick="toggleDemoDropdown()" class="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition flex items-center shadow-sm">
+            <svg class="w-3.5 h-3.5 mr-1.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            비정형 데모 불러오기
+            <svg class="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <div id="demo-dropdown" class="hidden absolute right-0 mt-2 w-64 rounded-xl shadow-xl bg-white ring-1 ring-black ring-opacity-5 divide-y divide-slate-100 z-50">
+            <div class="p-2">
+              <button onclick="loadDemoCase('horizontal')" class="w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-emerald-50 text-slate-700 font-medium flex items-center justify-between">
+                <div>
+                  <span class="font-bold text-emerald-800 block">Case A: 가로형(Horizontal) 레이아웃</span>
+                  <span class="text-[11px] text-slate-400">행에 파라미터, 열에 Day가 배열된 형태</span>
+                </div>
+                <span class="badge bg-emerald-100 text-emerald-800 text-[9px]">추천</span>
+              </button>
+              <button onclick="loadDemoCase('vertical')" class="w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-emerald-50 text-slate-700 font-medium mt-1">
+                <span class="font-bold text-slate-800 block">Case B: 세로형(Vertical) 레이아웃</span>
+                <span class="text-[11px] text-slate-400">10^5 단위 & mM 포도당 포함 세로형</span>
+              </button>
+              <button onclick="loadDemoCase('split')" class="w-full text-left px-3 py-2 text-xs rounded-lg hover:bg-emerald-50 text-slate-700 font-medium mt-1">
+                <span class="font-bold text-slate-800 block">Case C: 복합 분할 테이블</span>
+                <span class="text-[11px] text-slate-400">상단 메타데이터 + 흩어진 다중 블록</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <button onclick="resetAllState()" class="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition">
+          초기화
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 7-STEP WIZARD PROGRESS BAR -->
+  <div class="bg-white border-b border-slate-200 py-3 shadow-xs sticky top-16 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <nav class="flex items-center justify-between w-full overflow-x-auto pb-1 sm:pb-0">
+        <ol class="flex items-center space-x-2 sm:space-x-4 w-full justify-between min-w-[760px]">
+          <!-- Step 1 -->
+          <li class="flex items-center cursor-pointer group" onclick="switchStep(1)">
+            <div id="step-badge-1" class="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shadow-sm ring-4 ring-emerald-100">1</div>
+            <div class="ml-2 text-left">
+              <span id="step-label-1" class="text-xs font-bold text-emerald-700 block whitespace-nowrap">Step 1. 파일 업로드</span>
+            </div>
+          </li>
+          <div class="h-0.5 flex-1 bg-slate-200 mx-1"></div>
+
+          <!-- Step 2 -->
+          <li class="flex items-center cursor-pointer group" onclick="switchStep(2)">
+            <div id="step-badge-2" class="w-7 h-7 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-xs">2</div>
+            <div class="ml-2 text-left">
+              <span id="step-label-2" class="text-xs font-medium text-slate-500 block whitespace-nowrap">Step 2. 시맨틱 스캔</span>
+            </div>
+          </li>
+          <div class="h-0.5 flex-1 bg-slate-200 mx-1"></div>
+
+          <!-- Step 3 -->
+          <li class="flex items-center cursor-pointer group" onclick="switchStep(3)">
+            <div id="step-badge-3" class="w-7 h-7 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-xs">3</div>
+            <div class="ml-2 text-left">
+              <span id="step-label-3" class="text-xs font-medium text-slate-500 block whitespace-nowrap">Step 3. 키워드 매핑</span>
+            </div>
+          </li>
+          <div class="h-0.5 flex-1 bg-slate-200 mx-1"></div>
+
+          <!-- Step 4 -->
+          <li class="flex items-center cursor-pointer group" onclick="switchStep(4)">
+            <div id="step-badge-4" class="w-7 h-7 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-xs">4</div>
+            <div class="ml-2 text-left">
+              <span id="step-label-4" class="text-xs font-medium text-slate-500 block whitespace-nowrap">Step 4. 영역 자동 추출</span>
+            </div>
+          </li>
+          <div class="h-0.5 flex-1 bg-slate-200 mx-1"></div>
+
+          <!-- Step 5 -->
+          <li class="flex items-center cursor-pointer group" onclick="switchStep(5)">
+            <div id="step-badge-5" class="w-7 h-7 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-xs">5</div>
+            <div class="ml-2 text-left">
+              <span id="step-label-5" class="text-xs font-medium text-slate-500 block whitespace-nowrap">Step 5. 결과 미리보기</span>
+            </div>
+          </li>
+          <div class="h-0.5 flex-1 bg-slate-200 mx-1"></div>
+
+          <!-- Step 6 -->
+          <li class="flex items-center cursor-pointer group" onclick="switchStep(6)">
+            <div id="step-badge-6" class="w-7 h-7 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-xs">6</div>
+            <div class="ml-2 text-left">
+              <span id="step-label-6" class="text-xs font-medium text-slate-500 block whitespace-nowrap">Step 6. 단위/메타 설정</span>
+            </div>
+          </li>
+          <div class="h-0.5 flex-1 bg-slate-200 mx-1"></div>
+
+          <!-- Step 7 -->
+          <li class="flex items-center cursor-pointer group" onclick="switchStep(7)">
+            <div id="step-badge-7" class="w-7 h-7 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-xs">7</div>
+            <div class="ml-2 text-left">
+              <span id="step-label-7" class="text-xs font-medium text-slate-500 block whitespace-nowrap">Step 7. Review & 통합</span>
+            </div>
+          </li>
+        </ol>
+      </nav>
+    </div>
+  </div>
+
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- ==========================================
+         STEP 1. 파일 업로드 (File Upload)
+         ========================================== -->
+    <section id="step-section-1" class="space-y-6">
+      <div class="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 rounded-2xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
+        <div class="absolute -right-10 -bottom-10 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="max-w-3xl relative z-10 space-y-3">
+          <div class="inline-flex items-center space-x-2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs px-2.5 py-1 rounded-full font-medium">
+            <span>Schema-free Keyword Scanner</span>
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>가로/세로/혼합 서식 자동 극복</span>
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight">비정형 세포배양 엑셀을 키워드 스캔으로 한 번에 자동 추출</h2>
+          <p class="text-slate-300 text-sm leading-relaxed">
+            고정된 컬럼 위치가 없어도大丈夫! 시트 내 셀 텍스트를 전수 스캔하여 주요 바이오 파라미터(<span class="text-emerald-300 font-mono">VCD, Viability, Glucose, pH</span> 등)와 
+            배양일(<span class="text-emerald-300 font-mono">Day</span>)의 바운딩 박스 범위를 가로/세로 방향에 맞춰 자율 탐지합니다.
+          </p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 space-y-4">
+          <!-- Dropzone -->
+          <div id="dropzone" class="border-2 border-dashed border-emerald-300 hover:border-emerald-500 bg-white rounded-2xl p-8 text-center transition-all cursor-pointer shadow-sm hover:shadow-md flex flex-col items-center justify-center min-h-[220px]">
+            <input type="file" id="file-input" accept=".xlsx, .xls, .csv" class="hidden" />
+            <div class="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3 shadow-inner">
+              <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            </div>
+            <p class="text-sm font-semibold text-slate-800">엑셀(.xlsx, .xls) 또는 CSV 파일을 여기로 드래그하거나 <span class="text-emerald-600 underline">파일 찾아보기</span></p>
+            <p class="text-xs text-slate-400 mt-1">가로형/세로형/복합 분할 테이블 엑셀 모두 지원 &middot; 100% 브라우저 로컬 파싱</p>
+
+            <div class="mt-4 flex flex-wrap justify-center gap-2">
+              <button onclick="event.stopPropagation(); loadDemoCase('horizontal')" class="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-lg border border-emerald-200 transition">
+                ⚡ Case A: 가로형 엑셀 데모
+              </button>
+              <button onclick="event.stopPropagation(); loadDemoCase('vertical')" class="px-3 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition">
+                ⚡ Case B: 세로형 엑셀 데모
+              </button>
+              <button onclick="event.stopPropagation(); loadDemoCase('split')" class="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-semibold rounded-lg border border-amber-200 transition">
+                ⚡ Case C: 복합 분할 데모
+              </button>
+            </div>
+          </div>
+
+          <!-- File list card -->
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div class="flex items-center space-x-2">
+                <h3 class="text-sm font-bold text-slate-800">선택된 파일 정보</h3>
+                <span id="file-status-badge" class="badge bg-slate-100 text-slate-600">대기중</span>
+              </div>
+              <span id="file-size-info" class="text-xs text-slate-400"></span>
+            </div>
+            <div id="file-detail-container" class="p-5 flex flex-col justify-center min-h-[100px]">
+              <p class="text-center text-slate-400 text-sm">업로드된 파일이 없습니다. 상단에서 파일을 선택하거나 데모 버튼을 클릭하세요.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Side: Workflow Overview -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+          <h3 class="text-sm font-bold text-slate-900 flex items-center">
+            <svg class="w-4 h-4 mr-1.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+            </svg>
+            7단계 키워드 추출 파이프라인
+          </h3>
+          <p class="text-xs text-slate-500">정형/비정형 엑셀을 완전한 표준 바이오 DB로 변환하는 워크플로우입니다.</p>
+          
+          <div class="space-y-2 text-xs">
+            <div class="p-2.5 rounded-lg bg-emerald-50/60 border border-emerald-100 flex items-start space-x-2">
+              <span class="font-bold text-emerald-800 shrink-0">1. 파일 업로드</span>
+              <span class="text-slate-600">이종 서식 엑셀 원본 로드</span>
+            </div>
+            <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex items-start space-x-2">
+              <span class="font-bold text-slate-800 shrink-0">2. 시맨틱 스캔</span>
+              <span class="text-slate-600">시트 전체 셀 2D 색인 & 텍스트/수치 분류</span>
+            </div>
+            <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex items-start space-x-2">
+              <span class="font-bold text-slate-800 shrink-0">3. 키워드 매핑</span>
+              <span class="text-slate-600">생체 파라미터 및 일자 후보 키워드 식별</span>
+            </div>
+            <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex items-start space-x-2">
+              <span class="font-bold text-slate-800 shrink-0">4. 영역 자동 추출</span>
+              <span class="text-slate-600">가로/세로 방향 및 바운딩 박스 계산</span>
+            </div>
+            <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex items-start space-x-2">
+              <span class="font-bold text-slate-800 shrink-0">5. 결과 미리보기</span>
+              <span class="text-slate-600">Long/Wide 듀얼 포맷 & 이상치 검출</span>
+            </div>
+            <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex items-start space-x-2">
+              <span class="font-bold text-slate-800 shrink-0">6. 파라미터 설정</span>
+              <span class="text-slate-600">단위 환산(mM→g/L), 결측치 보간, 메타데이터</span>
+            </div>
+            <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex items-start space-x-2">
+              <span class="font-bold text-slate-800 shrink-0">7. Review & 통합</span>
+              <span class="text-slate-600">트렌드 차트 시각화 & 엑셀/CSV 다중 내보내기</span>
+            </div>
+          </div>
+
+          <button id="btn-goto-step-2" onclick="performScanAndProceed()" disabled class="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold text-sm shadow-md transition flex items-center justify-center space-x-2 disabled:cursor-not-allowed">
+            <span>다음: 시트 시맨틱 스캔 시작</span>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ==========================================
+         STEP 2. 시트 전체 문자 스캔 (Sheet Semantic Scan)
+         ========================================== -->
+    <section id="step-section-2" class="space-y-6 hidden">
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900 flex items-center">
+              <span>Step 2. 시트 전체 셀 시맨틱 스캔 결과</span>
+              <span class="ml-2 badge bg-emerald-100 text-emerald-800 text-[10px]">2D Cell Indexing</span>
+            </h2>
+            <p class="text-xs text-slate-500">시트 내 모든 셀의 좌표(Row, Col)와 데이터 타입(문자, 수치, 일시, 공란)을 2차원 배열로 인덱싱했습니다.</p>
+          </div>
+          <div class="flex items-center space-x-2">
+            <label class="text-xs font-medium text-slate-600">스캔 대상 시트:</label>
+            <select id="step2-sheet-select" onchange="onSheetSelectionChanged(this.value)" class="text-xs font-semibold rounded-lg border-slate-300 bg-slate-50 p-2 text-slate-800">
+            </select>
+          </div>
+        </div>
+
+        <!-- Scan Metrics KPI Cards -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <span class="text-[11px] font-semibold text-slate-500 block">시트 전체 범위</span>
+            <span id="kpi-grid-dimension" class="text-base font-bold text-slate-900 font-mono">-</span>
+          </div>
+          <div class="p-3 rounded-xl bg-blue-50/60 border border-blue-100">
+            <span class="text-[11px] font-semibold text-blue-600 block">텍스트(문자) 셀</span>
+            <span id="kpi-text-cells" class="text-base font-bold text-blue-800 font-mono">0개</span>
+          </div>
+          <div class="p-3 rounded-xl bg-emerald-50/60 border border-emerald-100">
+            <span class="text-[11px] font-semibold text-emerald-600 block">수치(데이터) 셀</span>
+            <span id="kpi-number-cells" class="text-base font-bold text-emerald-800 font-mono">0개</span>
+          </div>
+          <div class="p-3 rounded-xl bg-amber-50/60 border border-amber-100">
+            <span class="text-[11px] font-semibold text-amber-600 block">탐지된 후보 키워드</span>
+            <span id="kpi-keyword-hits" class="text-base font-bold text-amber-800 font-mono">0개</span>
+          </div>
+        </div>
+
+        <!-- Heatmap / Sheet Grid Viewer -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-3 text-xs">
+              <span class="font-bold text-slate-700">시트 2D 그리드 뷰어:</span>
+              <span class="flex items-center"><span class="w-3 h-3 rounded bg-amber-200 border border-amber-400 mr-1"></span> 키워드 셀</span>
+              <span class="flex items-center"><span class="w-3 h-3 rounded bg-emerald-100 border border-emerald-300 mr-1"></span> 수치 데이터</span>
+              <span class="flex items-center"><span class="w-3 h-3 rounded bg-blue-100 border border-blue-300 mr-1"></span> 텍스트 라벨</span>
+            </div>
+            <div class="text-[11px] text-slate-400">마우스 호버 시 셀 상세 좌표/내용 확인</div>
+          </div>
+          <div id="grid-viewer-container" class="max-h-[360px] overflow-auto border border-slate-200 rounded-xl bg-white shadow-inner">
+            <!-- 2D Table generated here -->
+          </div>
+        </div>
+
+        <!-- Navigation bar -->
+        <div class="flex justify-between items-center pt-2">
+          <button onclick="switchStep(1)" class="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 hover:bg-slate-100 border border-slate-200">
+            ← 이전 단계
+          </button>
+          <button onclick="switchStep(3)" class="px-5 py-2.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition flex items-center space-x-1.5">
+            <span>다음: 후보 키워드 선택 및 매핑 확인</span>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ==========================================
+         STEP 3. 키워드 선택 및 매핑 (Keyword Selection & Mapping)
+         ========================================== -->
+    <section id="step-section-3" class="space-y-6 hidden">
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900 flex items-center">
+              <span>Step 3. 탐지된 후보 키워드 및 타겟 파라미터 매핑</span>
+              <span id="mapped-count-badge" class="ml-2 badge bg-emerald-100 text-emerald-800 text-[10px]">0개 매핑됨</span>
+            </h2>
+            <p class="text-xs text-slate-500">시트에서 감지된 텍스트 셀 중 세포배양 지표(VCD, Viability, Glucose 등) 및 시간(Day) 키워드를 확인하고 연결합니다.</p>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button onclick="autoMapAllKeywords()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition flex items-center">
+              <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              키워드 자동 매칭 적용
+            </button>
+            <button onclick="openManualKeywordModal()" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200">
+              + 수동 키워드 추가
+            </button>
+          </div>
+        </div>
+
+        <!-- Keyword Cards Container -->
+        <div class="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+          <table class="min-h-full min-w-full divide-y divide-slate-200 text-xs">
+            <thead class="bg-slate-50 text-slate-600 font-semibold">
+              <tr>
+                <th class="py-3 px-3 text-left w-12">사용</th>
+                <th class="py-3 px-3 text-left w-24">셀 좌표</th>
+                <th class="py-3 px-4 text-left">원본 텍스트</th>
+                <th class="py-3 px-4 text-left">감지된 파라미터 / 신뢰도</th>
+                <th class="py-3 px-4 text-left">표준 타겟 항목 매핑</th>
+                <th class="py-3 px-3 text-center w-28">추정 방향</th>
+                <th class="py-3 px-3 text-center w-16">관리</th>
+              </tr>
+            </thead>
+            <tbody id="keyword-list-tbody" class="divide-y divide-slate-100 bg-white">
+              <!-- Dynamically rendered -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="p-3.5 bg-blue-50/70 rounded-xl border border-blue-100 flex items-start space-x-2 text-xs text-blue-900">
+          <svg class="w-4 h-4 text-blue-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <div>
+            <span class="font-bold">스마트 키워드 매핑 팁:</span> 
+            <span class="text-blue-800">반드시 '배양일(Culture Day)' 키워드가 1개 이상 지정되어야 시계열 데이터를 결합할 수 있습니다. 수치 영역 방향(가로형/세로형)은 다음 단계에서 세부 조정 가능합니다.</span>
+          </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="flex justify-between items-center pt-2">
+          <button onclick="switchStep(2)" class="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 hover:bg-slate-100 border border-slate-200">
+            ← 이전 단계
+          </button>
+          <button onclick="performRegionExtractionAndProceed()" class="px-5 py-2.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition flex items-center space-x-1.5">
+            <span>다음: 데이터 영역(Bounding Box) 자동 추출</span>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ==========================================
+         STEP 4. 데이터 영역 자동 추출 (Data Region Extraction)
+         ========================================== -->
+    <section id="step-section-4" class="space-y-6 hidden">
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900 flex items-center">
+              <span>Step 4. 바운딩 박스(Bounding Box) 및 방향 자동 탐지</span>
+              <span id="region-count-badge" class="ml-2 badge bg-emerald-100 text-emerald-800 text-[10px]">0개 영역 추출</span>
+            </h2>
+            <p class="text-xs text-slate-500">키워드 셀 기준으로 연속된 수치 데이터 영역을 가로(우측) 또는 세로(하단) 방향으로 자동 감지했습니다.</p>
+          </div>
+          <div class="text-xs text-slate-500">
+            범위나 방향이 맞지 않는 경우 수동으로 조정할 수 있습니다.
+          </div>
+        </div>
+
+        <!-- Region Cards -->
+        <div id="regions-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Dynamically generated bounding box cards -->
+        </div>
+
+        <!-- Sheet Grid Overlay Preview with Bounding Box Highlights -->
+        <div class="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-slate-800 flex items-center">
+              <svg class="w-4 h-4 mr-1 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
+              시트 상의 추출 영역 시각적 하이라이트 (Bounding Box Overlay)
+            </span>
+            <span class="text-[11px] text-slate-500">초록색 점선 = 추출된 데이터 범위</span>
+          </div>
+          <div id="overlay-grid-container" class="max-h-[300px] overflow-auto border border-slate-200 rounded-lg bg-white shadow-inner">
+            <!-- Rendered grid with highlighted bounding boxes -->
+          </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="flex justify-between items-center pt-2">
+          <button onclick="switchStep(3)" class="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 hover:bg-slate-100 border border-slate-200">
+            ← 이전 단계
+          </button>
+          <button onclick="buildExtractedPreviewAndProceed()" class="px-5 py-2.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition flex items-center space-x-1.5">
+            <span>다음: 추출 데이터 미리보기 및 품질 검증</span>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ==========================================
+         STEP 5. 자동추출 결과 미리보기 (Extraction Preview)
+         ========================================== -->
+    <section id="step-section-5" class="space-y-6 hidden">
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900 flex items-center">
+              <span>Step 5. 추출 데이터셋 실시간 미리보기</span>
+              <span id="preview-total-badge" class="ml-2 badge bg-emerald-100 text-emerald-800 text-[10px]">0개 레코드</span>
+            </h2>
+            <p class="text-xs text-slate-500">바운딩 박스에서 추출된 수치들을 시간(Day) 축에 맞춰 정렬했습니다. 이상치와 결측치를 바로 확인하세요.</p>
+          </div>
+          <div class="flex items-center space-x-2">
+            <!-- Format Toggle -->
+            <div class="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-100 text-xs">
+              <button id="btn-preview-wide" onclick="setPreviewFormat('wide')" class="px-3 py-1 font-semibold rounded-md bg-white shadow-xs text-emerald-800">
+                피봇 와이드 포맷
+              </button>
+              <button id="btn-preview-long" onclick="setPreviewFormat('long')" class="px-3 py-1 font-medium rounded-md text-slate-600 hover:text-slate-900">
+                표준 롱 포맷 (EAV)
+              </button>
+            </div>
+            <!-- Filter Outliers -->
+            <select id="preview-filter" onchange="renderPreviewTable()" class="text-xs rounded-lg border-slate-200 bg-slate-50 p-1.5 text-slate-700">
+              <option value="all">전체 데이터</option>
+              <option value="warnings">이상치/경고 항목만</option>
+              <option value="valid">정상 레코드만</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Quality Alert Bar if any -->
+        <div id="preview-quality-alert" class="hidden p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <svg class="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            <span id="preview-quality-alert-text">음수 또는 유효 범위 밖의 이상치 데이터가 감지되었습니다. Step 6에서 처리 방식을 설정할 수 있습니다.</span>
+          </div>
+        </div>
+
+        <!-- Preview Table -->
+        <div id="preview-table-container" class="border border-slate-200 rounded-xl overflow-x-auto max-h-[420px]">
+          <!-- Table rendered here -->
+        </div>
+
+        <!-- Navigation -->
+        <div class="flex justify-between items-center pt-2">
+          <button onclick="switchStep(4)" class="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 hover:bg-slate-100 border border-slate-200">
+            ← 이전 단계
+          </button>
+          <button onclick="switchStep(6)" class="px-5 py-2.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition flex items-center space-x-1.5">
+            <span>다음: 분석 파라미터 & 메타데이터 설정</span>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ==========================================
+         STEP 6. 분석 Parameter & Metadata 설정 (Params & Metadata)
+         ========================================== -->
+    <section id="step-section-6" class="space-y-6 hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Left: Preprocessing & Unit Normalization (7 cols) -->
+        <div class="lg:col-span-7 space-y-5">
+          <!-- Unit Normalization -->
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-bold text-slate-900 flex items-center">
+                <svg class="w-4 h-4 mr-1.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"/></svg>
+                단위 자동 표준화 (Unit Normalization)
+              </h3>
+              <span class="badge bg-emerald-100 text-emerald-800 text-[10px]">화학/생물 표준식</span>
+            </div>
+            <p class="text-xs text-slate-500">연구원마다 다른 단위를 마스터 표준 단위(VCD: 10^6 cells/mL, Glucose: g/L)로 일괄 환산합니다.</p>
+            
+            <div class="space-y-2 text-xs">
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div>
+                  <span class="font-bold text-slate-800 block">Glucose 단위 변환 (mM → g/L)</span>
+                  <span class="text-slate-500 text-[11px]">포도당 분자량(180.16 g/mol) 반영: × 0.18016</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="cfg-convert-glucose" checked />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div>
+                  <span class="font-bold text-slate-800 block">VCD 단위 변환 (10^5 → 10^6 cells/mL)</span>
+                  <span class="text-slate-500 text-[11px]">단위 통일: 10^5 cells/mL 감지 시 ÷ 10 적용</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="cfg-convert-vcd" checked />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div>
+                  <span class="font-bold text-slate-800 block">Lactate 단위 변환 (mM → g/L)</span>
+                  <span class="text-slate-500 text-[11px]">젖산 분자량(90.08 g/mol) 반영: × 0.09008</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="cfg-convert-lactate" checked />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Outliers and Missing Values -->
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <h3 class="text-sm font-bold text-slate-900 flex items-center">
+              <svg class="w-4 h-4 mr-1.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+              이상치 필터링 & 결측치 보간 전략
+            </h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">이상치/음수 처리 방식</label>
+                <select id="cfg-outlier-treatment" class="w-full rounded-lg border-slate-300 bg-slate-50 p-2 font-medium">
+                  <option value="keep-flag">이상치 경고 플래그 유지 (DB 포함)</option>
+                  <option value="exclude">이상치 레코드 자동 제외 (DB 제외)</option>
+                </select>
+                <span class="text-[11px] text-slate-400 mt-1 block">Viability &gt; 100%, 음수 VCD 등 자동 판별</span>
+              </div>
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">결측치(Missing) 보간 기법</label>
+                <select id="cfg-interpolation" class="w-full rounded-lg border-slate-300 bg-slate-50 p-2 font-medium">
+                  <option value="null">보간 없음 (NaN / Null 유지)</option>
+                  <option value="linear">시계열 선형 보간법 (Linear)</option>
+                  <option value="ffill">직전값 유지 (Forward Fill)</option>
+                  <option value="zero">0으로 채우기 (Zero Fill)</option>
+                </select>
+                <span class="text-[11px] text-slate-400 mt-1 block">중간 미측정 셀에 대한 채움 전략</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Metadata Lineage Settings (5 cols) -->
+        <div class="lg:col-span-5 space-y-5">
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <h3 class="text-sm font-bold text-slate-900 flex items-center">
+              <svg class="w-4 h-4 mr-1.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+              실험 조건 & Lineage 메타데이터
+            </h3>
+            <p class="text-xs text-slate-500">통합 DB 레코드에 공통 부여될 실험 식별 메타데이터입니다.</p>
+
+            <div class="space-y-3 text-xs">
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">실험 고유식별자 (Experiment ID)</label>
+                <input type="text" id="meta-exp-id" value="EXP-2026-AUTO-01" class="w-full rounded-lg border-slate-300 bg-slate-50 p-2 font-medium font-mono" />
+              </div>
+
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block font-semibold text-slate-700 mb-1">세포주 (Cell Line)</label>
+                  <input type="text" id="meta-cell-line" value="CHO-K1" class="w-full rounded-lg border-slate-300 bg-slate-50 p-2 font-medium" />
+                </div>
+                <div>
+                  <label class="block font-semibold text-slate-700 mb-1">배양 용기 (Vessel)</label>
+                  <input type="text" id="meta-vessel" value="5L Bioreactor" class="w-full rounded-lg border-slate-300 bg-slate-50 p-2 font-medium" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block font-semibold text-slate-700 mb-1">접종 일시 (Inoculation Date)</label>
+                  <input type="date" id="meta-date" value="2026-09-01" class="w-full rounded-lg border-slate-300 bg-slate-50 p-2 font-medium" />
+                </div>
+                <div>
+                  <label class="block font-semibold text-slate-700 mb-1">담당 연구원 (Operator)</label>
+                  <input type="text" id="meta-operator" value="Researcher A" class="w-full rounded-lg border-slate-300 bg-slate-50 p-2 font-medium" />
+                </div>
+              </div>
+
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">실험 비고 / 노트</label>
+                <input type="text" id="meta-notes" value="Keyword-based Schema-free Extraction" class="w-full rounded-lg border-slate-300 bg-slate-50 p-2 font-medium text-slate-600" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Lineage info card -->
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1.5">
+            <span class="font-bold text-slate-800 block">데이터 추적성 (Data Lineage) 보존:</span>
+            <p>모든 데이터 포인트에 <code class="text-emerald-700 font-mono">Source_File</code>, <code class="text-emerald-700 font-mono">Source_Cell_Range</code>, <code class="text-emerald-700 font-mono">Original_Value</code>가 영구적으로 보존됩니다.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation -->
+      <div class="flex justify-between items-center pt-2">
+        <button onclick="switchStep(5)" class="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 hover:bg-slate-100 border border-slate-200">
+          ← 이전 단계
+        </button>
+        <button onclick="buildFinalHarmonizedAndProceed()" class="px-5 py-2.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md transition flex items-center space-x-1.5">
+          <span>다음: 최종 Review & 통합 DB 생성</span>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+        </button>
+      </div>
+    </section>
+
+
+    <!-- ==========================================
+         STEP 7. Review & 제출 (Final Review & Submit)
+         ========================================== -->
+    <section id="step-section-7" class="space-y-6 hidden">
+      <!-- Success Celebration Banner -->
+      <div class="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-2xl p-6 text-white shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div class="flex items-center space-x-4">
+          <div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center text-white shrink-0">
+            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+          </div>
+          <div>
+            <h2 class="text-xl font-extrabold">키워드 기반 데이터 자동 추출 및 표준 DB 구축 완료!</h2>
+            <p class="text-xs text-emerald-100">비정형 엑셀 파일이 표준 스키마, 단위 변환, 이상치 검증이 완료된 통합 DB로 전환되었습니다.</p>
+          </div>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button onclick="exportToExcel()" class="px-4 py-2 bg-white text-emerald-800 hover:bg-emerald-50 rounded-xl text-xs font-bold shadow-md transition flex items-center">
+            <svg class="w-4 h-4 mr-1.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            통합 엑셀 다운로드 (.xlsx)
+          </button>
+          <button onclick="exportToCSV()" class="px-3.5 py-2 bg-emerald-800/80 hover:bg-emerald-800 text-white rounded-xl text-xs font-medium transition flex items-center">
+            CSV 다운로드
+          </button>
+          <button onclick="exportToJSON()" class="px-3 py-2 bg-emerald-800/80 hover:bg-emerald-800 text-white rounded-xl text-xs font-medium transition">
+            JSON
+          </button>
+        </div>
+      </div>
+
+      <!-- Final KPI Cards -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+          <span class="text-xs font-medium text-slate-500 block">총 추출 데이터 포인트</span>
+          <span id="final-kpi-points" class="text-2xl font-black text-slate-900 font-mono">0</span>
+          <span class="text-[10px] text-emerald-600 mt-0.5 block">100% 무손실 인덱싱</span>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+          <span class="text-xs font-medium text-slate-500 block">표준화 파라미터 수</span>
+          <span id="final-kpi-params" class="text-2xl font-black text-emerald-600 font-mono">0개</span>
+          <span class="text-[10px] text-slate-400 mt-0.5 block">VCD, Viability, Glc 등</span>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+          <span class="text-xs font-medium text-slate-500 block">데이터 정합성 (Valid)</span>
+          <span id="final-kpi-valid-rate" class="text-2xl font-black text-blue-600 font-mono">100%</span>
+          <span id="final-kpi-outliers-count" class="text-[10px] text-amber-600 mt-0.5 block">이상치 0건 플래그</span>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+          <span class="text-xs font-medium text-slate-500 block">단위 변환 적용 건수</span>
+          <span id="final-kpi-unit-conversions" class="text-2xl font-black text-purple-600 font-mono">0</span>
+          <span class="text-[10px] text-purple-600 mt-0.5 block">표준 단위 환산 완료</span>
+        </div>
+      </div>
+
+      <!-- Synchronized Biological Trend Charts -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Chart 1: Cell Growth (VCD & Viability) -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-slate-900 flex items-center">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-2"></span>
+              세포 성장 곡선 (VCD & Viability)
+            </h3>
+            <span class="text-[11px] text-slate-400 font-mono">Dual-Axis</span>
+          </div>
+          <div class="h-64">
+            <canvas id="chart-growth"></canvas>
+          </div>
+        </div>
+
+        <!-- Chart 2: Metabolism (Glucose & Lactate) -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-slate-900 flex items-center">
+              <span class="w-2.5 h-2.5 rounded-full bg-blue-500 mr-2"></span>
+              대사 물질 농도 (Glucose & Lactate)
+            </h3>
+            <span class="text-[11px] text-slate-400 font-mono">Standard g/L</span>
+          </div>
+          <div class="h-64">
+            <canvas id="chart-metabolism"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Final Master DB Table -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 class="text-sm font-bold text-slate-900">표준 통합 DB 최종 레코드 테이블</h3>
+            <p class="text-xs text-slate-500">모든 출처 리니지 메타데이터가 완비된 최종 Harmonized 데이터셋입니다.</p>
+          </div>
+          <div class="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-100 text-xs">
+            <button id="btn-final-wide" onclick="setFinalTableFormat('wide')" class="px-3 py-1 font-semibold rounded-md bg-white shadow-xs text-emerald-800">
+              와이드 피봇 표 (분석용)
+            </button>
+            <button id="btn-final-long" onclick="setFinalTableFormat('long')" class="px-3 py-1 font-medium rounded-md text-slate-600 hover:text-slate-900">
+              롱 포맷 (EAV 스키마)
+            </button>
+          </div>
+        </div>
+
+        <div id="final-table-container" class="border border-slate-200 rounded-xl overflow-x-auto max-h-[380px]">
+          <!-- Master DB table rendered here -->
+        </div>
+
+        <div class="flex justify-between items-center pt-2">
+          <button onclick="switchStep(6)" class="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 hover:bg-slate-100 border border-slate-200">
+            ← 파라미터/설정 수정
+          </button>
+          <div class="flex items-center space-x-2">
+            <button onclick="saveToLocalStorageAndNotify()" class="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-900 text-white shadow-sm transition">
+              로컬 스토리지에 통합 저장
+            </button>
+            <a href="index.html" class="px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-300 transition">
+              기존 Harmonizer 메인 화면으로 이동
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MANUAL KEYWORD MODAL -->
+  <div id="modal-manual-keyword" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-100">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-bold text-slate-900">수동 키워드 셀 추가</h3>
+        <button onclick="closeManualKeywordModal()" class="text-slate-400 hover:text-slate-600">✕</button>
+      </div>
+      <p class="text-xs text-slate-500">특정 셀 좌표에 위치한 라벨을 파라미터 키워드로 직접 지정합니다.</p>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">셀 좌표 (예: B3, C5)</label>
+          <input type="text" id="manual-cell-addr" placeholder="예: B3" class="w-full rounded-lg border-slate-300 bg-slate-50 p-2 font-mono uppercase" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">표준 파라미터 항목</label>
+          <select id="manual-target-param" class="w-full rounded-lg border-slate-300 bg-slate-50 p-2 font-medium">
+            <option value="Culture_Day">배양일 (Culture Day)</option>
+            <option value="VCD">생균수 밀도 (VCD)</option>
+            <option value="Viability">생존율 (Viability)</option>
+            <option value="Glucose">포도당 (Glucose)</option>
+            <option value="Lactate">젖산 (Lactate)</option>
+            <option value="pH">수소이온농도 (pH)</option>
+            <option value="DO">용존산소 (DO)</option>
+            <option value="Titer">생산량 (Titer)</option>
+            <option value="Osmolality">삼투압 (Osmolality)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">데이터 연속 방향</label>
+          <select id="manual-direction" class="w-full rounded-lg border-slate-300 bg-slate-50 p-2 font-medium">
+            <option value="auto">자동 감지 (Auto-Detect)</option>
+            <option value="horizontal">가로형 (우측 →)</option>
+            <option value="vertical">세로형 (하단 ↓)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="flex justify-end space-x-2 pt-2">
+        <button onclick="closeManualKeywordModal()" class="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg">취소</button>
+        <button onclick="addManualKeywordConfirm()" class="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm">추가하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 transform transition-all duration-300 translate-y-20 opacity-0 pointer-events-none bg-slate-900 text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2">
+    <span id="toast-icon">✓</span>
+    <span id="toast-message">알림</span>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       GLOBAL STATE & KNOWLEDGE BASE
+       ========================================================================== */
+    const STATE = {
+      currentStep: 1,
+      uploadedFile: null, // { name, size, workbook, sheets: [] }
+      activeSheet: '',
+      grid2D: [],         // 2D matrix of cells
+      maxR: 0,
+      maxC: 0,
+      detectedKeywords: [], // [{ id, r, c, address, text, matchedParam, confidence, orientation }]
+      extractedRegions: [], // [{ id, param, direction, startAddr, endAddr, data: [], rawAddrs: [] }]
+      previewFormat: 'wide', // 'wide' or 'long'
+      finalFormat: 'wide',
+      chartGrowth: null,
+      chartMetabolism: null,
+      finalHarmonized: []
+    };
+
+    // Biological rules & validation limits
+    const PARAM_SPECS = {
+      'Culture_Day': { label: '배양일 (Day)', defaultUnit: 'Day', validMin: 0, validMax: 60 },
+      'VCD': { label: '생균밀도 (VCD)', defaultUnit: '10^6 cells/mL', validMin: 0, validMax: 150 },
+      'Viability': { label: '생존율 (Viability)', defaultUnit: '%', validMin: 0, validMax: 100 },
+      'Glucose': { label: '포도당 (Glucose)', defaultUnit: 'g/L', validMin: 0, validMax: 30 },
+      'Lactate': { label: '젖산 (Lactate)', defaultUnit: 'g/L', validMin: 0, validMax: 25 },
+      'pH': { label: '수소이온농도 (pH)', defaultUnit: '', validMin: 5.5, validMax: 8.5 },
+      'DO': { label: '용존산소 (DO)', defaultUnit: '%', validMin: 0, validMax: 120 },
+      'Titer': { label: '생산량 (Titer)', defaultUnit: 'mg/L', validMin: 0, validMax: 15000 },
+      'Osmolality': { label: '삼투압 (Osmolality)', defaultUnit: 'mOsm/kg', validMin: 150, validMax: 600 }
+    };
+
+    // Keyword detection regex dictionary
+    const KEYWORD_DICTIONARY = [
+      { param: 'Culture_Day', regex: /^(day|culture\s*day|배양일|경과일|일차|time\s*\(?h\)?)/i, weight: 1.0 },
+      { param: 'VCD', regex: /(vcd|viable\s*cell|생균수|생균밀도|10\^?6\s*cells?|10\^?5\s*cells?)/i, weight: 0.95 },
+      { param: 'Viability', regex: /(viability|생존율|생존도|via%|viab)/i, weight: 0.95 },
+      { param: 'Glucose', regex: /(glucose|glc|포도당|glu)/i, weight: 0.95 },
+      { param: 'Lactate', regex: /(lactate|lac|젖산)/i, weight: 0.95 },
+      { param: 'pH', regex: /(^ph$|^ph\s*\(|수소이온)/i, weight: 0.9 },
+      { param: 'DO', regex: /(dissolved\s*oxygen|^do$|do\s*\(%?\)|용존산소)/i, weight: 0.9 },
+      { param: 'Titer', regex: /(titer|생산량|mab|igg|protein)/i, weight: 0.9 },
+      { param: 'Osmolality', regex: /(osmolality|osmo|삼투압)/i, weight: 0.9 }
+    ];
+
+    /* ==========================================================================
+       INITIALIZATION & WIZARD NAVIGATION
+       ========================================================================== */
+    window.addEventListener('DOMContentLoaded', () => {
+      setupDropzone();
+      initDemoDropdownCloser();
+    });
+
+    function switchStep(targetStep) {
+      if (targetStep > 1 && !STATE.uploadedFile) {
+        showToast('먼저 엑셀 파일을 업로드하거나 데모를 불러와주세요.', 'warning');
+        return;
+      }
+      if (targetStep > 2 && STATE.grid2D.length === 0) {
+        showToast('시트 스캔을 먼저 실행해야 합니다.', 'warning');
+        return;
+      }
+
+      // Hide all step sections
+      for (let i = 1; i <= 7; i++) {
+        const sec = document.getElementById(`step-section-${i}`);
+        if (sec) sec.classList.add('hidden');
+        
+        // Update badge states
+        const badge = document.getElementById(`step-badge-${i}`);
+        const label = document.getElementById(`step-label-${i}`);
+        if (badge && label) {
+          if (i < targetStep) {
+            badge.className = 'w-7 h-7 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs';
+            badge.innerHTML = '✓';
+            label.className = 'text-xs font-semibold text-emerald-800 block whitespace-nowrap';
+          } else if (i === targetStep) {
+            badge.className = 'w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shadow-sm ring-4 ring-emerald-100';
+            badge.innerHTML = `${i}`;
+            label.className = 'text-xs font-bold text-emerald-700 block whitespace-nowrap';
+          } else {
+            badge.className = 'w-7 h-7 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-xs';
+            badge.innerHTML = `${i}`;
+            label.className = 'text-xs font-medium text-slate-500 block whitespace-nowrap';
+          }
+        }
+      }
+
+      const activeSec = document.getElementById(`step-section-${targetStep}`);
+      if (activeSec) {
+        activeSec.classList.remove('hidden');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      STATE.currentStep = targetStep;
+
+      // Special triggers per step
+      if (targetStep === 5) {
+        renderPreviewTable();
+      } else if (targetStep === 7) {
+        renderFinalCharts();
+        renderFinalTable();
+      }
+    }
+
+    /* ==========================================================================
+       STEP 1: FILE UPLOAD & PARSING
+       ========================================================================== */
+    function setupDropzone() {
+      const dropzone = document.getElementById('dropzone');
+      const fileInput = document.getElementById('file-input');
+
+      dropzone.addEventListener('click', () => fileInput.click());
+
+      dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.classList.add('border-emerald-500', 'bg-emerald-50/50');
+      });
+
+      dropzone.addEventListener('dragleave', () => {
+        dropzone.classList.remove('border-emerald-500', 'bg-emerald-50/50');
+      });
+
+      dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('border-emerald-500', 'bg-emerald-50/50');
+        if (e.dataTransfer.files.length > 0) {
+          handleFile(e.dataTransfer.files[0]);
+        }
+      });
+
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          handleFile(e.target.files[0]);
+        }
+      });
+    }
+
+    function handleFile(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+          
+          STATE.uploadedFile = {
+            name: file.name,
+            size: file.size,
+            workbook: workbook,
+            sheets: workbook.SheetNames
+          };
+          STATE.activeSheet = workbook.SheetNames[0];
+
+          renderUploadedFileInfo();
+          showToast(`'${file.name}' 파일이 성공적으로 로드되었습니다.`, 'success');
+        } catch (err) {
+          console.error(err);
+          showToast('엑셀 파일을 읽는 중 오류가 발생했습니다: ' + err.message, 'error');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function renderUploadedFileInfo() {
+      if (!STATE.uploadedFile) return;
+
+      document.getElementById('file-status-badge').textContent = '준비 완료';
+      document.getElementById('file-status-badge').className = 'badge bg-emerald-100 text-emerald-800';
+      document.getElementById('file-size-info').textContent = (STATE.uploadedFile.size / 1024).toFixed(1) + ' KB';
+
+      const container = document.getElementById('file-detail-container');
+      container.innerHTML = `
+        <div class="flex items-start justify-between">
+          <div class="space-y-1">
+            <div class="flex items-center space-x-2">
+              <span class="font-bold text-slate-800 text-sm">${STATE.uploadedFile.name}</span>
+              <span class="badge bg-slate-100 text-slate-700 text-[10px]">${STATE.uploadedFile.sheets.length}개 시트</span>
+            </div>
+            <p class="text-xs text-slate-500">포맷: 엑셀 통합 문서 &middot; 시트 목록: ${STATE.uploadedFile.sheets.join(', ')}</p>
+          </div>
+          <button onclick="performScanAndProceed()" class="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs">
+            시트 스캔 시작
+          </button>
+        </div>
+      `;
+
+      document.getElementById('btn-goto-step-2').removeAttribute('disabled');
+
+      // Populate sheet select on step 2
+      const sheetSelect = document.getElementById('step2-sheet-select');
+      sheetSelect.innerHTML = '';
+      STATE.uploadedFile.sheets.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = s;
+        sheetSelect.appendChild(opt);
+      });
+    }
+
+    /* ==========================================================================
+       BUILT-IN COMPLEX DEMO CASES
+       ========================================================================== */
+    function loadDemoCase(caseType) {
+      closeDemoDropdown();
+      const wb = XLSX.utils.book_new();
+
+      if (caseType === 'horizontal') {
+        // Case A: Horizontal Layout (Parameters along rows, Days along columns)
+        const rows = [
+          ['실험번호', 'EXP-2026-CHO-H01', '', '세포주', 'CHO-K1', '', '용기', '5L Bioreactor', '', '작업자', '연구원A'],
+          ['접종일', '2026-09-01', '', '배지', 'CD-CHO Medium', '', '', '', '', '', ''],
+          [''],
+          ['Parameter', 'Day 0', 'Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7', 'Day 8', 'Day 9', 'Day 10', 'Day 12', 'Day 14'],
+          ['VCD (10^6 cells/mL)', 0.35, 0.65, 1.35, 2.95, 6.20, 11.10, 15.60, 18.20, 19.10, 17.50, 15.20, 11.40, 7.80],
+          ['Viability (%)', 98.6, 98.4, 98.1, 97.6, 96.8, 96.0, 95.1, 93.5, 91.2, 87.5, 82.3, 74.0, 62.5],
+          ['Glucose (g/L)', 6.5, 6.0, 5.2, 4.1, 3.2, 2.2, 5.8, 4.5, 3.2, 2.1, 1.5, 4.2, 2.0],
+          ['Lactate (g/L)', 0.25, 0.45, 0.95, 1.60, 2.30, 2.95, 3.20, 3.00, 2.60, 2.20, 1.95, 1.80, 1.70],
+          ['pH', 7.15, 7.12, 7.08, 7.04, 7.01, 6.98, 7.00, 7.02, 6.99, 6.96, 6.95, 6.92, 6.90],
+          ['DO (%)', 50, 50, 48, 45, 42, 40, 45, 48, 50, 52, 55, 50, 48],
+          ['Titer (mg/L)', 0, 12, 40, 105, 230, 470, 810, 1240, 1680, 2150, 2580, 3120, 3450]
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        XLSX.utils.book_append_sheet(wb, ws, 'Horizontal_Culture');
+        
+        STATE.uploadedFile = {
+          name: 'Demo_Horizontal_CaseA.xlsx',
+          size: 15420,
+          workbook: wb,
+          sheets: ['Horizontal_Culture']
+        };
+        STATE.activeSheet = 'Horizontal_Culture';
+        renderUploadedFileInfo();
+        showToast('가로형(Horizontal) 엑셀 데모가 로드되었습니다!', 'success');
+        setTimeout(() => performScanAndProceed(), 400);
+
+      } else if (caseType === 'vertical') {
+        // Case B: Vertical Layout with non-standard units (10^5 cells/mL, mM Glucose)
+        const rows = [
+          ['배양 리포트: Vertical Standard Format'],
+          ['Date', 'Culture Day', 'VCD (10^5 cells/mL)', 'Viability %', 'Glucose (mM)', 'Lactate (mM)', 'pH', 'DO %'],
+          ['2026-09-01', 0, 3.5, 98.8, 36.1, 2.8, 7.18, 55],
+          ['2026-09-02', 1, 6.8, 98.5, 33.3, 5.0, 7.14, 52],
+          ['2026-09-03', 2, 13.9, 98.0, 28.9, 10.5, 7.10, 50],
+          ['2026-09-04', 3, 30.5, 97.5, 22.8, 17.8, 7.05, 48],
+          ['2026-09-05', 4, 64.0, 96.9, 17.8, 25.5, 7.01, 44],
+          ['2026-09-06', 5, 115.0, 96.2, 12.2, 32.7, 6.97, 40],
+          ['2026-09-07', 6, 162.0, 95.0, 32.2, 35.5, 7.00, 45],
+          ['2026-09-08', 7, 190.0, 93.8, 25.0, 33.3, 7.03, 48],
+          ['2026-09-09', 8, 198.0, 91.5, 17.8, 28.9, 7.00, 50],
+          ['2026-09-10', 9, 180.0, 87.0, 11.7, 24.4, 6.98, 52],
+          ['2026-09-11', 10, 155.0, 82.5, 8.3, 21.6, 6.95, 54]
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        XLSX.utils.book_append_sheet(wb, ws, 'Vertical_Run');
+
+        STATE.uploadedFile = {
+          name: 'Demo_Vertical_CaseB.xlsx',
+          size: 13200,
+          workbook: wb,
+          sheets: ['Vertical_Run']
+        };
+        STATE.activeSheet = 'Vertical_Run';
+        renderUploadedFileInfo();
+        showToast('세포배양 세로형(Vertical) 데모가 로드되었습니다!', 'success');
+        setTimeout(() => performScanAndProceed(), 400);
+
+      } else {
+        // Case C: Split Tables (Multiple separated blocks)
+        const rows = [
+          ['Experiment Header Block', '', '', '', 'Culture Timeline & Cell Growth', '', '', '', '', '', '', ''],
+          ['Batch ID:', 'BR-2026-SP03', '', '', 'Day', 0, 1, 2, 3, 4, 5, 6, 7],
+          ['Cell Line:', 'HEK293', '', '', 'VCD (10^6)', 0.4, 0.8, 1.8, 3.8, 7.5, 13.0, 17.2, 18.0],
+          ['Operator:', '이종현 연구원', '', '', 'Viability (%)', 99.0, 98.8, 98.2, 97.8, 97.0, 96.1, 94.8, 92.5],
+          [''],
+          ['', '', '', '', 'Metabolic Analytics', '', '', '', '', '', '', ''],
+          ['', '', '', '', 'Day', 0, 1, 2, 3, 4, 5, 6, 7],
+          ['', '', '', '', 'Glucose (g/L)', 5.8, 5.4, 4.8, 3.9, 2.8, 1.9, 5.2, 4.0],
+          ['', '', '', '', 'Lactate (g/L)', 0.3, 0.6, 1.1, 1.8, 2.5, 3.1, 3.3, 3.0],
+          [''],
+          ['', '', '', '', 'Biophysical Measurements', '', '', '', '', '', '', ''],
+          ['', '', '', '', 'pH', 7.20, 7.15, 7.10, 7.06, 7.02, 6.99, 7.01, 7.03],
+          ['', '', '', '', 'Osmolality', 290, 292, 295, 305, 315, 330, 350, 365]
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        XLSX.utils.book_append_sheet(wb, ws, 'Split_Blocks');
+
+        STATE.uploadedFile = {
+          name: 'Demo_SplitTables_CaseC.xlsx',
+          size: 16800,
+          workbook: wb,
+          sheets: ['Split_Blocks']
+        };
+        STATE.activeSheet = 'Split_Blocks';
+        renderUploadedFileInfo();
+        showToast('복합 분할 테이블(Split Tables) 데모가 로드되었습니다!', 'success');
+        setTimeout(() => performScanAndProceed(), 400);
+      }
+    }
+
+    function toggleDemoDropdown() {
+      const dd = document.getElementById('demo-dropdown');
+      dd.classList.toggle('hidden');
+    }
+    function closeDemoDropdown() {
+      const dd = document.getElementById('demo-dropdown');
+      if (dd) dd.classList.add('hidden');
+    }
+    function initDemoDropdownCloser() {
+      document.addEventListener('click', (e) => {
+        const btn = document.getElementById('btn-demo-menu');
+        const dd = document.getElementById('demo-dropdown');
+        if (btn && dd && !btn.contains(e.target) && !dd.contains(e.target)) {
+          dd.classList.add('hidden');
+        }
+      });
+    }
+
+    /* ==========================================================================
+       STEP 2: SHEET SEMANTIC SCAN (2D Cell Indexing)
+       ========================================================================== */
+    function onSheetSelectionChanged(sheetName) {
+      STATE.activeSheet = sheetName;
+      performScanAndProceed();
+    }
+
+    function performScanAndProceed() {
+      if (!STATE.uploadedFile) return;
+
+      const ws = STATE.uploadedFile.workbook.Sheets[STATE.activeSheet];
+      if (!ws || !ws['!ref']) {
+        showToast('선택한 시트에 데이터가 없습니다.', 'error');
+        return;
+      }
+
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      STATE.maxR = range.e.r;
+      STATE.maxC = range.e.c;
+
+      // Build 2D matrix
+      const matrix = [];
+      let textCount = 0;
+      let numberCount = 0;
+      const candidates = [];
+
+      for (let r = 0; r <= STATE.maxR; r++) {
+        const row = [];
+        for (let c = 0; c <= STATE.maxC; c++) {
+          const addr = XLSX.utils.encode_cell({ r, c });
+          const cell = ws[addr];
+          
+          let val = '';
+          let raw = null;
+          let type = 'empty';
+
+          if (cell !== undefined && cell !== null && cell.v !== undefined && cell.v !== null && cell.v !== '') {
+            raw = cell.v;
+            val = String(cell.v).trim();
+            if (typeof cell.v === 'number') {
+              type = 'number';
+              numberCount++;
+            } else if (cell.t === 'd' || cell.v instanceof Date) {
+              type = 'date';
+              numberCount++;
+            } else {
+              type = 'string';
+              textCount++;
+
+              // Semantic keyword check
+              const match = matchKeyword(val);
+              if (match) {
+                candidates.push({
+                  id: 'kw_' + addr,
+                  r, c,
+                  address: addr,
+                  text: val,
+                  matchedParam: match.param,
+                  confidence: match.confidence,
+                  orientation: detectLocalOrientation(ws, r, c, range)
+                });
+              }
+            }
+          }
+          row.push({ r, c, address: addr, val, raw, type });
+        }
+        matrix.push(row);
+      }
+
+      STATE.grid2D = matrix;
+      STATE.detectedKeywords = candidates;
+
+      // Update KPIs
+      document.getElementById('kpi-grid-dimension').textContent = 
+        `${XLSX.utils.encode_col(0)}1 : ${XLSX.utils.encode_col(STATE.maxC)}${STATE.maxR + 1} (${STATE.maxR + 1}행 × ${STATE.maxC + 1}열)`;
+      document.getElementById('kpi-text-cells').textContent = `${textCount}개`;
+      document.getElementById('kpi-number-cells').textContent = `${numberCount}개`;
+      document.getElementById('kpi-keyword-hits').textContent = `${candidates.length}개`;
+
+      renderGridViewer(matrix, candidates);
+      switchStep(2);
+    }
+
+    // Match cell text against dictionary
+    function matchKeyword(text) {
+      if (!text || typeof text !== 'string') return null;
+      const clean = text.trim();
+
+      for (const item of KEYWORD_DICTIONARY) {
+        if (item.regex.test(clean)) {
+          return { param: item.param, confidence: Math.round(item.weight * 100) };
+        }
+      }
+      return null;
+    }
+
+    // Local orientation hint: check if numbers follow to the right vs down
+    function detectLocalOrientation(ws, r, c, range) {
+      let rightNums = 0;
+      let downNums = 0;
+
+      // Check rightwards
+      for (let col = c + 1; col <= Math.min(c + 6, range.e.c); col++) {
+        const cell = ws[XLSX.utils.encode_cell({ r, c: col })];
+        if (cell && (typeof cell.v === 'number' || (!isNaN(parseFloat(cell.v)) && isFinite(cell.v)))) {
+          rightNums++;
+        }
+      }
+
+      // Check downwards
+      for (let row = r + 1; row <= Math.min(r + 6, range.e.r); row++) {
+        const cell = ws[XLSX.utils.encode_cell({ r: row, c })];
+        if (cell && (typeof cell.v === 'number' || (!isNaN(parseFloat(cell.v)) && isFinite(cell.v)))) {
+          downNums++;
+        }
+      }
+
+      return rightNums >= downNums ? 'horizontal' : 'vertical';
+    }
+
+    // Render 2D grid viewer in Step 2
+    function renderGridViewer(matrix, keywords) {
+      const container = document.getElementById('grid-viewer-container');
+      const kwMap = new Map();
+      keywords.forEach(k => kwMap.set(k.address, k));
+
+      let html = '<table class="border-collapse text-[11px] font-mono min-w-full">';
+      
+      // Header row with column letters
+      html += '<thead><tr class="bg-slate-100 text-slate-500 font-bold border-b border-slate-200 sticky top-0 z-10">';
+      html += '<th class="p-1.5 border-r border-slate-200 bg-slate-100 w-10 text-center">#</th>';
+      for (let c = 0; c <= Math.min(STATE.maxC, 25); c++) {
+        html += `<th class="p-1.5 border-r border-slate-200 text-center min-w-[70px]">${XLSX.utils.encode_col(c)}</th>`;
+      }
+      html += '</tr></thead><tbody>';
+
+      // Rows
+      const displayRows = Math.min(STATE.maxR, 40);
+      for (let r = 0; r <= displayRows; r++) {
+        html += `<tr class="border-b border-slate-100 hover:bg-slate-50">`;
+        html += `<td class="p-1.5 bg-slate-100 text-slate-500 text-center font-bold border-r border-slate-200 select-none">${r + 1}</td>`;
+        
+        for (let c = 0; c <= Math.min(STATE.maxC, 25); c++) {
+          const cell = matrix[r][c];
+          const isKw = kwMap.has(cell.address);
+          
+          let cellClass = 'grid-cell p-1.5 border-r border-slate-100 truncate max-w-[120px] ';
+          if (isKw) {
+            cellClass += 'cell-highlight-keyword';
+          } else if (cell.type === 'number') {
+            cellClass += 'text-emerald-700 bg-emerald-50/40 text-right';
+          } else if (cell.type === 'string') {
+            cellClass += 'text-slate-700 bg-white';
+          } else {
+            cellClass += 'text-slate-300 bg-slate-50/20';
+          }
+
+          const kwInfo = isKw ? ` title="키워드: ${kwMap.get(cell.address).matchedParam}"` : ` title="${cell.address}: ${cell.val}"`;
+          html += `<td class="${cellClass}"${kwInfo}>${cell.val}</td>`;
+        }
+        html += '</tr>';
+      }
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    /* ==========================================================================
+       STEP 3: KEYWORD SELECTION & MAPPING
+       ========================================================================== */
+    function renderStep3KeywordList() {
+      const tbody = document.getElementById('keyword-list-tbody');
+      tbody.innerHTML = '';
+
+      if (STATE.detectedKeywords.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="p-6 text-center text-slate-400">
+              감지된 키워드가 없습니다. 우측 상단의 '+ 수동 키워드 추가'를 눌러 셀을 직접 지정하세요.
+            </td>
+          </tr>
+        `;
+        document.getElementById('mapped-count-badge').textContent = '0개 매핑됨';
+        return;
+      }
+
+      let mappedCount = 0;
+
+      STATE.detectedKeywords.forEach((kw, idx) => {
+        if (kw.matchedParam) mappedCount++;
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50/80 transition';
+
+        tr.innerHTML = `
+          <td class="py-2.5 px-3 text-center">
+            <input type="checkbox" id="kw_active_${kw.id}" ${kw.matchedParam ? 'checked' : ''} onchange="onKeywordActiveToggled('${kw.id}', this.checked)" class="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4" />
+          </td>
+          <td class="py-2.5 px-3 font-mono font-bold text-slate-800">
+            <span class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200">${kw.address}</span>
+          </td>
+          <td class="py-2.5 px-4 font-semibold text-slate-900 max-w-[180px] truncate" title="${kw.text}">
+            ${kw.text}
+          </td>
+          <td class="py-2.5 px-4">
+            <div class="flex items-center space-x-1.5">
+              <span class="badge ${kw.confidence >= 95 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'} text-[11px]">
+                ${kw.confidence}% 일치
+              </span>
+              <span class="text-slate-500">${PARAM_SPECS[kw.matchedParam] ? PARAM_SPECS[kw.matchedParam].label : kw.matchedParam}</span>
+            </div>
+          </td>
+          <td class="py-2.5 px-4">
+            <select onchange="onKeywordTargetChanged('${kw.id}', this.value)" class="text-xs rounded-lg border-slate-300 bg-slate-50 p-1.5 font-medium text-slate-800 w-full max-w-[200px]">
+              <option value="">-- 매핑 안 함 --</option>
+              ${Object.keys(PARAM_SPECS).map(p => `
+                <option value="${p}" ${kw.matchedParam === p ? 'selected' : ''}>${PARAM_SPECS[p].label}</option>
+              `).join('')}
+            </select>
+          </td>
+          <td class="py-2.5 px-3 text-center">
+            <select onchange="onKeywordOrientationChanged('${kw.id}', this.value)" class="text-xs rounded-lg border-slate-200 bg-slate-100 p-1 font-semibold text-slate-700">
+              <option value="horizontal" ${kw.orientation === 'horizontal' ? 'selected' : ''}>가로형 (우측 →)</option>
+              <option value="vertical" ${kw.orientation === 'vertical' ? 'selected' : ''}>세로형 (하단 ↓)</option>
+            </select>
+          </td>
+          <td class="py-2.5 px-3 text-center">
+            <button onclick="removeKeyword('${kw.id}')" class="text-slate-400 hover:text-red-500 p-1 transition" title="삭제">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('mapped-count-badge').textContent = `${mappedCount}개 매핑됨`;
+    }
+
+    function onKeywordActiveToggled(id, active) {
+      const kw = STATE.detectedKeywords.find(k => k.id === id);
+      if (!kw) return;
+      if (!active) {
+        kw.previousParam = kw.matchedParam;
+        kw.matchedParam = '';
+      } else {
+        kw.matchedParam = kw.previousParam || 'Culture_Day';
+      }
+      renderStep3KeywordList();
+    }
+
+    function onKeywordTargetChanged(id, targetParam) {
+      const kw = STATE.detectedKeywords.find(k => k.id === id);
+      if (kw) {
+        kw.matchedParam = targetParam;
+        renderStep3KeywordList();
+      }
+    }
+
+    function onKeywordOrientationChanged(id, orientation) {
+      const kw = STATE.detectedKeywords.find(k => k.id === id);
+      if (kw) kw.orientation = orientation;
+    }
+
+    function removeKeyword(id) {
+      STATE.detectedKeywords = STATE.detectedKeywords.filter(k => k.id !== id);
+      renderStep3KeywordList();
+    }
+
+    function autoMapAllKeywords() {
+      STATE.detectedKeywords.forEach(kw => {
+        const match = matchKeyword(kw.text);
+        if (match) kw.matchedParam = match.param;
+      });
+      renderStep3KeywordList();
+      showToast('키워드 자동 매칭이 재실행되었습니다.', 'success');
+    }
+
+    function openManualKeywordModal() {
+      document.getElementById('modal-manual-keyword').classList.remove('hidden');
+      document.getElementById('manual-cell-addr').focus();
+    }
+    function closeManualKeywordModal() {
+      document.getElementById('modal-manual-keyword').classList.add('hidden');
+    }
+    function addManualKeywordConfirm() {
+      const rawAddr = document.getElementById('manual-cell-addr').value.trim().toUpperCase();
+      const targetParam = document.getElementById('manual-target-param').value;
+      const dir = document.getElementById('manual-direction').value;
+
+      if (!rawAddr) {
+        showToast('셀 좌표를 입력해주세요 (예: B3)', 'warning');
+        return;
+      }
+
+      try {
+        const coords = XLSX.utils.decode_cell(rawAddr);
+        let cellText = rawAddr;
+        if (STATE.grid2D[coords.r] && STATE.grid2D[coords.r][coords.c]) {
+          cellText = STATE.grid2D[coords.r][coords.c].val || rawAddr;
+        }
+
+        const newKw = {
+          id: 'kw_' + rawAddr,
+          r: coords.r,
+          c: coords.c,
+          address: rawAddr,
+          text: cellText,
+          matchedParam: targetParam,
+          confidence: 100,
+          orientation: dir === 'auto' ? 'horizontal' : dir
+        };
+
+        // Remove existing if any
+        STATE.detectedKeywords = STATE.detectedKeywords.filter(k => k.address !== rawAddr);
+        STATE.detectedKeywords.push(newKw);
+
+        closeManualKeywordModal();
+        renderStep3KeywordList();
+        showToast(`수동 키워드 [${rawAddr}: ${targetParam}]가 등록되었습니다.`, 'success');
+      } catch (err) {
+        showToast('유효하지 않은 셀 좌표입니다 (예: C4)', 'error');
+      }
+    }
+
+    /* ==========================================================================
+       STEP 4: BOUNDING BOX & DATA REGION EXTRACTION
+       ========================================================================== */
+    function performRegionExtractionAndProceed() {
+      const mapped = STATE.detectedKeywords.filter(k => k.matchedParam);
+      if (mapped.length === 0) {
+        showToast('최소 하나 이상의 키워드를 매핑해야 추출을 진행할 수 있습니다.', 'warning');
+        return;
+      }
+
+      const hasDay = mapped.some(k => k.matchedParam === 'Culture_Day');
+      if (!hasDay) {
+        showToast('배양일(Culture Day) 키워드가 매핑되지 않아 시간 축이 생성되지 않을 수 있습니다.', 'warning');
+      }
+
+      // Extract bounding box for each mapped keyword
+      const regions = [];
+      mapped.forEach(kw => {
+        const region = extractBoundingBox(kw);
+        if (region) regions.push(region);
+      });
+
+      STATE.extractedRegions = regions;
+      renderStep4Regions();
+      switchStep(4);
+    }
+
+    // Core Schema-free bounding box detector
+    function extractBoundingBox(kw) {
+      const r = kw.r;
+      const c = kw.c;
+      const dir = kw.orientation;
+      const data = [];
+      const rawAddrs = [];
+
+      let startR = r, startC = c;
+      let endR = r, endC = c;
+
+      if (dir === 'horizontal') {
+        // Scan rightwards: c+1, c+2, ...
+        startR = r;
+        startC = c + 1;
+        let col = startC;
+        let emptyStreak = 0;
+
+        while (col <= STATE.maxC && emptyStreak < 2) {
+          const cell = STATE.grid2D[r][col];
+          const parsed = parseCellToNumber(cell ? cell.val : '');
+          if (parsed !== null) {
+            data.push(parsed);
+            rawAddrs.push(cell.address);
+            endC = col;
+            emptyStreak = 0;
+          } else {
+            emptyStreak++;
+          }
+          col++;
+        }
+        endR = r;
+      } else {
+        // Scan downwards: r+1, r+2, ...
+        startC = c;
+        startR = r + 1;
+        let row = startR;
+        let emptyStreak = 0;
+
+        while (row <= STATE.maxR && emptyStreak < 2) {
+          const cell = STATE.grid2D[row] ? STATE.grid2D[row][c] : null;
+          const parsed = parseCellToNumber(cell ? cell.val : '');
+          if (parsed !== null) {
+            data.push(parsed);
+            rawAddrs.push(cell ? cell.address : '');
+            endR = row;
+            emptyStreak = 0;
+          } else {
+            emptyStreak++;
+          }
+          row++;
+        }
+        endC = c;
+      }
+
+      const startAddr = XLSX.utils.encode_cell({ r: startR, c: startC });
+      const endAddr = XLSX.utils.encode_cell({ r: endR, c: endC });
+
+      return {
+        id: 'reg_' + kw.id,
+        kwId: kw.id,
+        param: kw.matchedParam,
+        label: PARAM_SPECS[kw.matchedParam] ? PARAM_SPECS[kw.matchedParam].label : kw.matchedParam,
+        direction: dir,
+        keywordAddr: kw.address,
+        keywordText: kw.text,
+        startAddr,
+        endAddr,
+        startR, startC, endR, endC,
+        data,
+        rawAddrs
+      };
+    }
+
+    function parseCellToNumber(val) {
+      if (val === null || val === undefined || val === '') return null;
+      if (typeof val === 'number') return isNaN(val) ? null : val;
+      const clean = String(val).replace(/,/g, '').trim();
+      // Handle day string like "Day 0" or "Day 1.5"
+      const dayMatch = clean.match(/^(?:Day|D)\s*(\d+(?:\.\d+)?)/i);
+      if (dayMatch) return parseFloat(dayMatch[1]);
+      
+      const num = parseFloat(clean);
+      return isNaN(num) ? null : num;
+    }
+
+    function renderStep4Regions() {
+      const container = document.getElementById('regions-container');
+      container.innerHTML = '';
+      document.getElementById('region-count-badge').textContent = `${STATE.extractedRegions.length}개 영역 추출`;
+
+      STATE.extractedRegions.forEach((reg, idx) => {
+        const card = document.createElement('div');
+        card.className = 'p-4 rounded-xl border border-slate-200 bg-white shadow-xs space-y-3';
+
+        const samplePreview = reg.data.slice(0, 6).map(v => `<span class="px-1.5 py-0.5 rounded bg-slate-100 font-mono text-[11px] text-slate-700 font-semibold">${v}</span>`).join(' ');
+        const extraCount = reg.data.length > 6 ? `<span class="text-slate-400 text-[10px]">+${reg.data.length - 6}개</span>` : '';
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="w-3 h-3 rounded-full ${reg.param === 'Culture_Day' ? 'bg-indigo-500' : 'bg-emerald-500'}"></span>
+              <span class="font-bold text-slate-900 text-xs">${reg.label}</span>
+              <span class="badge ${reg.direction === 'horizontal' ? 'bg-sky-100 text-sky-800' : 'bg-purple-100 text-purple-800'} text-[10px]">
+                ${reg.direction === 'horizontal' ? '가로형 (우측 →)' : '세로형 (하단 ↓)'}
+              </span>
+            </div>
+            <span class="font-mono text-xs font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+              ${reg.startAddr}:${reg.endAddr}
+            </span>
+          </div>
+
+          <div class="text-[11px] text-slate-500 flex items-center justify-between">
+            <span>키워드 셀: <strong class="font-mono text-slate-700">${reg.keywordAddr}</strong> ("${reg.keywordText}")</span>
+            <span>데이터 수량: <strong class="text-emerald-700 font-bold">${reg.data.length}개 포인트</strong></span>
+          </div>
+
+          <div class="p-2 rounded-lg bg-slate-50/70 border border-slate-100 space-y-1">
+            <span class="text-[10px] font-semibold text-slate-400 block uppercase tracking-wider">추출된 수치 샘플 미리보기</span>
+            <div class="flex items-center space-x-1 overflow-x-auto pb-1">
+              ${samplePreview} ${extraCount}
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
+            <div class="flex items-center space-x-2">
+              <label class="text-slate-500 text-[11px]">방향 전환:</label>
+              <select onchange="changeRegionDirection('${reg.id}', this.value)" class="text-[11px] rounded border-slate-200 bg-slate-50 p-1 font-medium">
+                <option value="horizontal" ${reg.direction === 'horizontal' ? 'selected' : ''}>가로형 (우측)</option>
+                <option value="vertical" ${reg.direction === 'vertical' ? 'selected' : ''}>세로형 (하단)</option>
+              </select>
+            </div>
+            <button onclick="recalculateSingleRegion('${reg.id}')" class="text-[11px] text-emerald-600 hover:text-emerald-700 font-medium">
+              ↻ 영역 재계산
+            </button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+
+      renderOverlayGrid();
+    }
+
+    function changeRegionDirection(regionId, newDir) {
+      const reg = STATE.extractedRegions.find(r => r.id === regionId);
+      if (!reg) return;
+      const kw = STATE.detectedKeywords.find(k => k.id === reg.kwId);
+      if (kw) kw.orientation = newDir;
+      
+      const newRegion = extractBoundingBox(kw);
+      const idx = STATE.extractedRegions.findIndex(r => r.id === regionId);
+      if (idx !== -1) {
+        STATE.extractedRegions[idx] = newRegion;
+      }
+      renderStep4Regions();
+    }
+
+    function recalculateSingleRegion(regionId) {
+      const reg = STATE.extractedRegions.find(r => r.id === regionId);
+      if (!reg) return;
+      const kw = STATE.detectedKeywords.find(k => k.id === reg.kwId);
+      const newRegion = extractBoundingBox(kw);
+      const idx = STATE.extractedRegions.findIndex(r => r.id === regionId);
+      if (idx !== -1) {
+        STATE.extractedRegions[idx] = newRegion;
+      }
+      renderStep4Regions();
+      showToast(`${reg.label} 영역이 재계산되었습니다.`, 'success');
+    }
+
+    // Render 2D grid with bounding boxes highlighted
+    function renderOverlayGrid() {
+      const container = document.getElementById('overlay-grid-container');
+      const kwMap = new Map();
+      const rangeMap = new Map(); // address -> { param, isDay }
+
+      STATE.extractedRegions.forEach(reg => {
+        kwMap.set(reg.keywordAddr, reg.param);
+        reg.rawAddrs.forEach(addr => {
+          rangeMap.set(addr, { param: reg.param, isDay: reg.param === 'Culture_Day' });
+        });
+      });
+
+      let html = '<table class="border-collapse text-[11px] font-mono min-w-full">';
+      html += '<thead><tr class="bg-slate-100 text-slate-500 font-bold border-b border-slate-200 sticky top-0 z-10">';
+      html += '<th class="p-1.5 border-r border-slate-200 bg-slate-100 w-10 text-center">#</th>';
+      for (let c = 0; c <= Math.min(STATE.maxC, 25); c++) {
+        html += `<th class="p-1.5 border-r border-slate-200 text-center min-w-[70px]">${XLSX.utils.encode_col(c)}</th>`;
+      }
+      html += '</tr></thead><tbody>';
+
+      const displayRows = Math.min(STATE.maxR, 35);
+      for (let r = 0; r <= displayRows; r++) {
+        html += `<tr class="border-b border-slate-100">`;
+        html += `<td class="p-1.5 bg-slate-100 text-slate-500 text-center font-bold border-r border-slate-200 select-none">${r + 1}</td>`;
+        
+        for (let c = 0; c <= Math.min(STATE.maxC, 25); c++) {
+          const cell = STATE.grid2D[r][c];
+          const isKw = kwMap.has(cell.address);
+          const rangeHit = rangeMap.get(cell.address);
+
+          let cellClass = 'grid-cell p-1.5 border-r border-slate-100 truncate max-w-[120px] ';
+          if (isKw) {
+            cellClass += 'cell-highlight-keyword';
+          } else if (rangeHit) {
+            cellClass += rangeHit.isDay ? 'cell-highlight-day' : 'cell-highlight-range';
+          } else {
+            cellClass += cell.type === 'number' ? 'text-slate-600 bg-slate-50/40 text-right' : 'text-slate-400 bg-white';
+          }
+
+          html += `<td class="${cellClass}" title="${cell.address}: ${cell.val}">${cell.val}</td>`;
+        }
+        html += '</tr>';
+      }
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    /* ==========================================================================
+       STEP 5: PREVIEW & REAL-TIME VALIDATION
+       ========================================================================== */
+    function buildExtractedPreviewAndProceed() {
+      if (STATE.extractedRegions.length === 0) {
+        showToast('추출된 데이터 영역이 없습니다.', 'warning');
+        return;
+      }
+      renderPreviewTable();
+      switchStep(5);
+    }
+
+    function setPreviewFormat(fmt) {
+      STATE.previewFormat = fmt;
+      document.getElementById('btn-preview-wide').className = fmt === 'wide'
+        ? 'px-3 py-1 font-semibold rounded-md bg-white shadow-xs text-emerald-800'
+        : 'px-3 py-1 font-medium rounded-md text-slate-600 hover:text-slate-900';
+      document.getElementById('btn-preview-long').className = fmt === 'long'
+        ? 'px-3 py-1 font-semibold rounded-md bg-white shadow-xs text-emerald-800'
+        : 'px-3 py-1 font-medium rounded-md text-slate-600 hover:text-slate-900';
+      renderPreviewTable();
+    }
+
+    function renderPreviewTable() {
+      const container = document.getElementById('preview-table-container');
+      const filter = document.getElementById('preview-filter').value;
+      const dayRegion = STATE.extractedRegions.find(r => r.param === 'Culture_Day');
+      const paramRegions = STATE.extractedRegions.filter(r => r.param !== 'Culture_Day');
+
+      // Determine time length
+      const maxLen = Math.max(...STATE.extractedRegions.map(r => r.data.length), 0);
+      const days = [];
+      for (let i = 0; i < maxLen; i++) {
+        if (dayRegion && dayRegion.data[i] !== undefined) {
+          days.push(dayRegion.data[i]);
+        } else {
+          days.push(i); // Fallback Culture_Day 0, 1, 2...
+        }
+      }
+
+      let warningCount = 0;
+
+      if (STATE.previewFormat === 'wide') {
+        // Wide Preview
+        let html = '<table class="min-w-full divide-y divide-slate-200 text-xs text-left">';
+        html += '<thead class="bg-slate-50 text-slate-700 font-bold sticky top-0 z-10"><tr>';
+        html += '<th class="py-2.5 px-3">Culture_Day</th>';
+        paramRegions.forEach(pr => {
+          html += `<th class="py-2.5 px-3">${pr.label}</th>`;
+        });
+        html += '<th class="py-2.5 px-3 text-center">품질 상태</th>';
+        html += '</tr></thead><tbody class="divide-y divide-slate-100 bg-white">';
+
+        for (let i = 0; i < maxLen; i++) {
+          const dayVal = days[i];
+          let rowWarnings = [];
+
+          let cellsHtml = `<td class="py-2 px-3 font-mono font-bold text-slate-900">Day ${dayVal}</td>`;
+          paramRegions.forEach(pr => {
+            const val = pr.data[i];
+            const spec = PARAM_SPECS[pr.param];
+
+            let cellClass = 'font-mono text-slate-800';
+            if (val === undefined || val === null) {
+              cellsHtml += `<td class="py-2 px-3 text-slate-300 font-mono">-</td>`;
+            } else {
+              let isOutlier = false;
+              if (spec) {
+                if (val < 0) { isOutlier = true; rowWarnings.push(`${pr.label} 음수`); }
+                if (val > spec.validMax) { isOutlier = true; rowWarnings.push(`${pr.label} 초과`); }
+              }
+              if (isOutlier) {
+                warningCount++;
+                cellClass = 'font-mono text-amber-800 bg-amber-50 font-bold px-1.5 py-0.5 rounded';
+              }
+              cellsHtml += `<td class="py-2 px-3"><span class="${cellClass}">${val}</span></td>`;
+            }
+          });
+
+          const hasWarn = rowWarnings.length > 0;
+          if (filter === 'warnings' && !hasWarn) continue;
+          if (filter === 'valid' && hasWarn) continue;
+
+          const statusHtml = hasWarn
+            ? `<span class="badge bg-amber-100 text-amber-800 text-[10px]" title="${rowWarnings.join(', ')}">경고 (${rowWarnings.length})</span>`
+            : `<span class="badge bg-emerald-100 text-emerald-800 text-[10px]">정상</span>`;
+
+          html += `<tr class="hover:bg-slate-50/80">${cellsHtml}<td class="py-2 px-3 text-center">${statusHtml}</td></tr>`;
+        }
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+
+      } else {
+        // Long Format (EAV)
+        let html = '<table class="min-w-full divide-y divide-slate-200 text-xs text-left">';
+        html += '<thead class="bg-slate-50 text-slate-700 font-bold sticky top-0 z-10"><tr>';
+        html += '<th class="py-2.5 px-3">Culture_Day</th>';
+        html += '<th class="py-2.5 px-3">Parameter</th>';
+        html += '<th class="py-2.5 px-3">Value</th>';
+        html += '<th class="py-2.5 px-3">Unit</th>';
+        html += '<th class="py-2.5 px-3">Raw Address</th>';
+        html += '<th class="py-2.5 px-3 text-center">Status</th>';
+        html += '</tr></thead><tbody class="divide-y divide-slate-100 bg-white">';
+
+        let longRowsCount = 0;
+        for (let i = 0; i < maxLen; i++) {
+          const dayVal = days[i];
+          paramRegions.forEach(pr => {
+            const val = pr.data[i];
+            if (val === undefined || val === null) return;
+
+            const spec = PARAM_SPECS[pr.param];
+            let isOutlier = false;
+            let statusText = 'Valid';
+            if (spec) {
+              if (val < 0) { isOutlier = true; statusText = 'Negative_Warning'; }
+              else if (val > spec.validMax) { isOutlier = true; statusText = 'Outlier_Warning'; }
+            }
+            if (isOutlier) warningCount++;
+
+            if (filter === 'warnings' && !isOutlier) return;
+            if (filter === 'valid' && isOutlier) return;
+
+            longRowsCount++;
+            const addr = pr.rawAddrs[i] || '-';
+            html += `
+              <tr class="hover:bg-slate-50/80">
+                <td class="py-2 px-3 font-mono font-bold text-slate-900">Day ${dayVal}</td>
+                <td class="py-2 px-3 font-semibold text-slate-800">${pr.label}</td>
+                <td class="py-2 px-3 font-mono ${isOutlier ? 'text-amber-800 font-bold bg-amber-50 rounded' : 'text-slate-800'}">${val}</td>
+                <td class="py-2 px-3 text-slate-500">${spec ? spec.defaultUnit : ''}</td>
+                <td class="py-2 px-3 font-mono text-slate-400">${addr}</td>
+                <td class="py-2 px-3 text-center">
+                  <span class="badge ${isOutlier ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'} text-[10px]">${statusText}</span>
+                </td>
+              </tr>
+            `;
+          });
+        }
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+      }
+
+      document.getElementById('preview-total-badge').textContent = `${maxLen}개 시계열 포인트`;
+
+      const alertBar = document.getElementById('preview-quality-alert');
+      if (warningCount > 0) {
+        alertBar.classList.remove('hidden');
+        document.getElementById('preview-quality-alert-text').textContent = 
+          `총 ${warningCount}건의 유효 범위 밖 이상치 및 음수 데이터가 감지되었습니다. 다음 단계에서 보정/제외 방식을 지정하세요.`;
+      } else {
+        alertBar.classList.add('hidden');
+      }
+    }
+
+    /* ==========================================================================
+       STEP 6 & 7: HARMONIZATION, CHARTS & SUBMISSION
+       ========================================================================== */
+    function buildFinalHarmonizedAndProceed() {
+      // Read configs
+      const convertGlucose = document.getElementById('cfg-convert-glucose').checked;
+      const convertVcd = document.getElementById('cfg-convert-vcd').checked;
+      const convertLactate = document.getElementById('cfg-convert-lactate').checked;
+      const outlierTreatment = document.getElementById('cfg-outlier-treatment').value;
+      const interpolation = document.getElementById('cfg-interpolation').value;
+
+      const expId = document.getElementById('meta-exp-id').value.trim() || 'EXP-2026-AUTO-01';
+      const cellLine = document.getElementById('meta-cell-line').value.trim() || 'CHO-K1';
+      const vessel = document.getElementById('meta-vessel').value.trim() || '5L Bioreactor';
+      const operator = document.getElementById('meta-operator').value.trim() || 'Researcher';
+      const date = document.getElementById('meta-date').value || '2026-09-01';
+      const notes = document.getElementById('meta-notes').value || '';
+
+      const dayRegion = STATE.extractedRegions.find(r => r.param === 'Culture_Day');
+      const paramRegions = STATE.extractedRegions.filter(r => r.param !== 'Culture_Day');
+      const maxLen = Math.max(...STATE.extractedRegions.map(r => r.data.length), 0);
+
+      const days = [];
+      for (let i = 0; i < maxLen; i++) {
+        days.push(dayRegion && dayRegion.data[i] !== undefined ? dayRegion.data[i] : i);
+      }
+
+      let totalPoints = 0;
+      let unitConversionsCount = 0;
+      let outlierCount = 0;
+      let validCount = 0;
+
+      const harmonizedRows = [];
+
+      for (let i = 0; i < maxLen; i++) {
+        const dayVal = days[i];
+        
+        paramRegions.forEach(pr => {
+          let rawVal = pr.data[i];
+          const rawAddr = pr.rawAddrs[i] || '-';
+          const spec = PARAM_SPECS[pr.param];
+          let finalVal = rawVal;
+          let finalUnit = spec ? spec.defaultUnit : '';
+          let converted = false;
+
+          if (rawVal === undefined || rawVal === null) {
+            if (interpolation === 'zero') finalVal = 0;
+            else return; // skip if null
+          }
+
+          // Unit Conversion Logic
+          if (pr.param === 'Glucose' && convertGlucose) {
+            // If raw text indicates mM or value looks like mM (>15)
+            if (pr.keywordText.toLowerCase().includes('mm') || rawVal > 25) {
+              finalVal = parseFloat((rawVal * 0.18016).toFixed(3));
+              finalUnit = 'g/L';
+              converted = true;
+              unitConversionsCount++;
+            }
+          }
+          if (pr.param === 'Lactate' && convertLactate) {
+            if (pr.keywordText.toLowerCase().includes('mm') || rawVal > 15) {
+              finalVal = parseFloat((rawVal * 0.09008).toFixed(3));
+              finalUnit = 'g/L';
+              converted = true;
+              unitConversionsCount++;
+            }
+          }
+          if (pr.param === 'VCD' && convertVcd) {
+            if (pr.keywordText.includes('10^5') || pr.keywordText.includes('105') || rawVal > 80) {
+              finalVal = parseFloat((rawVal / 10).toFixed(3));
+              finalUnit = '10^6 cells/mL';
+              converted = true;
+              unitConversionsCount++;
+            }
+          }
+
+          // Outlier check
+          let status = 'Valid';
+          let isOutlier = false;
+          if (spec) {
+            if (finalVal < 0) { isOutlier = true; status = 'Negative_Warning'; }
+            else if (finalVal > spec.validMax) { isOutlier = true; status = 'Outlier_Warning'; }
+          }
+
+          if (isOutlier) {
+            outlierCount++;
+            if (outlierTreatment === 'exclude') return; // exclude from final DB
+          } else {
+            validCount++;
+          }
+
+          totalPoints++;
+          harmonizedRows.push({
+            Experiment_ID: expId,
+            Culture_Day: dayVal,
+            Sample_Date: date,
+            Cell_Line: cellLine,
+            Vessel_Group: vessel,
+            Operator: operator,
+            Parameter: pr.param,
+            Parameter_Label: pr.label,
+            Value: finalVal,
+            Unit: finalUnit,
+            Raw_Value: rawVal,
+            Source_Cell: rawAddr,
+            Source_File: STATE.uploadedFile ? STATE.uploadedFile.name : 'Direct_Scan',
+            Source_Sheet: STATE.activeSheet,
+            Converted_Unit: converted ? 'Y' : 'N',
+            Validation_Status: status,
+            Notes: notes
+          });
+        });
+      }
+
+      STATE.finalHarmonized = harmonizedRows;
+
+      // Update KPI cards on Step 7
+      document.getElementById('final-kpi-points').textContent = totalPoints;
+      document.getElementById('final-kpi-params').textContent = `${paramRegions.length}개`;
+      const validRate = totalPoints > 0 ? Math.round((validCount / totalPoints) * 100) : 100;
+      document.getElementById('final-kpi-valid-rate').textContent = `${validRate}%`;
+      document.getElementById('final-kpi-outliers-count').textContent = `이상치 ${outlierCount}건 플래그`;
+      document.getElementById('final-kpi-unit-conversions').textContent = unitConversionsCount;
+
+      switchStep(7);
+    }
+
+    function setFinalTableFormat(fmt) {
+      STATE.finalFormat = fmt;
+      document.getElementById('btn-final-wide').className = fmt === 'wide'
+        ? 'px-3 py-1 font-semibold rounded-md bg-white shadow-xs text-emerald-800'
+        : 'px-3 py-1 font-medium rounded-md text-slate-600 hover:text-slate-900';
+      document.getElementById('btn-final-long').className = fmt === 'long'
+        ? 'px-3 py-1 font-semibold rounded-md bg-white shadow-xs text-emerald-800'
+        : 'px-3 py-1 font-medium rounded-md text-slate-600 hover:text-slate-900';
+      renderFinalTable();
+    }
+
+    function renderFinalTable() {
+      const container = document.getElementById('final-table-container');
+      const data = STATE.finalHarmonized;
+
+      if (data.length === 0) {
+        container.innerHTML = '<div class="p-6 text-center text-slate-400">데이터가 없습니다.</div>';
+        return;
+      }
+
+      if (STATE.finalFormat === 'long') {
+        // Long Format table
+        let html = '<table class="min-w-full divide-y divide-slate-200 text-xs text-left">';
+        html += '<thead class="bg-slate-50 text-slate-700 font-bold sticky top-0 z-10"><tr>';
+        html += '<th class="py-2.5 px-3">Exp ID</th>';
+        html += '<th class="py-2.5 px-3">Day</th>';
+        html += '<th class="py-2.5 px-3">Cell Line</th>';
+        html += '<th class="py-2.5 px-3">Parameter</th>';
+        html += '<th class="py-2.5 px-3">Value</th>';
+        html += '<th class="py-2.5 px-3">Unit</th>';
+        html += '<th class="py-2.5 px-3">Raw Value</th>';
+        html += '<th class="py-2.5 px-3">Source Cell</th>';
+        html += '<th class="py-2.5 px-3">Source File</th>';
+        html += '<th class="py-2.5 px-3 text-center">Status</th>';
+        html += '</tr></thead><tbody class="divide-y divide-slate-100 bg-white">';
+
+        data.forEach(r => {
+          html += `
+            <tr class="hover:bg-slate-50/80">
+              <td class="py-2 px-3 font-mono font-semibold text-slate-700">${r.Experiment_ID}</td>
+              <td class="py-2 px-3 font-mono font-bold text-slate-900">Day ${r.Culture_Day}</td>
+              <td class="py-2 px-3 text-slate-600">${r.Cell_Line}</td>
+              <td class="py-2 px-3 font-medium text-slate-800">${r.Parameter_Label}</td>
+              <td class="py-2 px-3 font-mono font-bold text-emerald-700">${r.Value}</td>
+              <td class="py-2 px-3 text-slate-500">${r.Unit}</td>
+              <td class="py-2 px-3 font-mono text-slate-400">${r.Raw_Value}</td>
+              <td class="py-2 px-3 font-mono text-slate-400">${r.Source_Cell}</td>
+              <td class="py-2 px-3 text-slate-500 truncate max-w-[120px]">${r.Source_File}</td>
+              <td class="py-2 px-3 text-center">
+                <span class="badge ${r.Validation_Status === 'Valid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'} text-[10px]">
+                  ${r.Validation_Status}
+                </span>
+              </td>
+            </tr>
+          `;
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+
+      } else {
+        // Wide Table (Pivoted)
+        const wideMap = new Map();
+        const paramKeys = new Set();
+
+        data.forEach(r => {
+          paramKeys.add(r.Parameter);
+          const key = `${r.Experiment_ID}_${r.Culture_Day}`;
+          if (!wideMap.has(key)) {
+            wideMap.set(key, {
+              Experiment_ID: r.Experiment_ID,
+              Culture_Day: r.Culture_Day,
+              Sample_Date: r.Sample_Date,
+              Cell_Line: r.Cell_Line,
+              Vessel_Group: r.Vessel_Group,
+              Operator: r.Operator,
+              Source_File: r.Source_File
+            });
+          }
+          wideMap.get(key)[r.Parameter] = r.Value;
+        });
+
+        const sortedParams = Array.from(paramKeys);
+        const wideRows = Array.from(wideMap.values()).sort((a, b) => a.Culture_Day - b.Culture_Day);
+
+        let html = '<table class="min-w-full divide-y divide-slate-200 text-xs text-left">';
+        html += '<thead class="bg-slate-50 text-slate-700 font-bold sticky top-0 z-10"><tr>';
+        html += '<th class="py-2.5 px-3">Exp ID</th>';
+        html += '<th class="py-2.5 px-3">Day</th>';
+        html += '<th class="py-2.5 px-3">Cell Line</th>';
+        html += '<th class="py-2.5 px-3">Vessel</th>';
+        sortedParams.forEach(p => {
+          html += `<th class="py-2.5 px-3">${PARAM_SPECS[p] ? PARAM_SPECS[p].label : p}</th>`;
+        });
+        html += '<th class="py-2.5 px-3">Source File</th>';
+        html += '</tr></thead><tbody class="divide-y divide-slate-100 bg-white">';
+
+        wideRows.forEach(wr => {
+          html += `<tr class="hover:bg-slate-50/80">`;
+          html += `<td class="py-2 px-3 font-mono font-semibold text-slate-700">${wr.Experiment_ID}</td>`;
+          html += `<td class="py-2 px-3 font-mono font-bold text-slate-900">Day ${wr.Culture_Day}</td>`;
+          html += `<td class="py-2 px-3 text-slate-600">${wr.Cell_Line}</td>`;
+          html += `<td class="py-2 px-3 text-slate-600">${wr.Vessel_Group}</td>`;
+          sortedParams.forEach(p => {
+            const v = wr[p];
+            html += `<td class="py-2 px-3 font-mono ${v !== undefined ? 'font-semibold text-slate-800' : 'text-slate-300'}">${v !== undefined ? v : '-'}</td>`;
+          });
+          html += `<td class="py-2 px-3 text-slate-400 truncate max-w-[120px]">${wr.Source_File}</td>`;
+          html += `</tr>`;
+        });
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+      }
+    }
+
+    /* ==========================================================================
+       FINAL SYNCHRONIZED CHARTS (Chart.js)
+       ========================================================================== */
+    function renderFinalCharts() {
+      const data = STATE.finalHarmonized;
+      if (data.length === 0) return;
+
+      // Filter distinct sorted culture days
+      const days = Array.from(new Set(data.map(r => r.Culture_Day))).sort((a, b) => a - b);
+
+      const getSeries = (param) => {
+        return days.map(d => {
+          const match = data.find(r => r.Culture_Day === d && r.Parameter === param);
+          return match ? match.Value : null;
+        });
+      };
+
+      const vcdSeries = getSeries('VCD');
+      const viabSeries = getSeries('Viability');
+      const glcSeries = getSeries('Glucose');
+      const lacSeries = getSeries('Lactate');
+
+      // Chart 1: Growth
+      const ctxGrowth = document.getElementById('chart-growth');
+      if (ctxGrowth) {
+        if (STATE.chartGrowth) STATE.chartGrowth.destroy();
+        STATE.chartGrowth = new Chart(ctxGrowth, {
+          type: 'line',
+          data: {
+            labels: days.map(d => `Day ${d}`),
+            datasets: [
+              {
+                label: 'VCD (10^6 cells/mL)',
+                data: vcdSeries,
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                yAxisID: 'yVCD',
+                tension: 0.3,
+                fill: true,
+                pointRadius: 4
+              },
+              {
+                label: 'Viability (%)',
+                data: viabSeries,
+                borderColor: '#6366f1',
+                borderDash: [5, 5],
+                yAxisID: 'yViab',
+                tension: 0.3,
+                pointRadius: 4
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+              yVCD: {
+                type: 'linear',
+                position: 'left',
+                title: { display: true, text: 'VCD (10^6/mL)' },
+                min: 0
+              },
+              yViab: {
+                type: 'linear',
+                position: 'right',
+                title: { display: true, text: 'Viability (%)' },
+                min: 40,
+                max: 100,
+                grid: { drawOnChartArea: false }
+              }
+            }
+          }
+        });
+      }
+
+      // Chart 2: Metabolism
+      const ctxMetab = document.getElementById('chart-metabolism');
+      if (ctxMetab) {
+        if (STATE.chartMetabolism) STATE.chartMetabolism.destroy();
+        STATE.chartMetabolism = new Chart(ctxMetab, {
+          type: 'line',
+          data: {
+            labels: days.map(d => `Day ${d}`),
+            datasets: [
+              {
+                label: 'Glucose (g/L)',
+                data: glcSeries,
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                tension: 0.3,
+                fill: true,
+                pointRadius: 4
+              },
+              {
+                label: 'Lactate (g/L)',
+                data: lacSeries,
+                borderColor: '#f59e0b',
+                tension: 0.3,
+                pointRadius: 4
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+              y: {
+                title: { display: true, text: '농도 (g/L)' },
+                min: 0
+              }
+            }
+          }
+        });
+      }
+    }
+
+    /* ==========================================================================
+       EXPORTS: EXCEL, CSV, JSON
+       ========================================================================== */
+    function exportToExcel() {
+      if (STATE.finalHarmonized.length === 0) {
+        showToast('내보낼 데이터가 없습니다.', 'warning');
+        return;
+      }
+
+      const wb = XLSX.utils.book_new();
+
+      // Sheet 1: Long Format DB
+      const wsLong = XLSX.utils.json_to_sheet(STATE.finalHarmonized);
+      XLSX.utils.book_append_sheet(wb, wsLong, 'Harmonized_Long_DB');
+
+      // Sheet 2: Wide Matrix
+      const wideMap = new Map();
+      STATE.finalHarmonized.forEach(r => {
+        const key = `${r.Experiment_ID}_${r.Culture_Day}`;
+        if (!wideMap.has(key)) {
+          wideMap.set(key, {
+            Experiment_ID: r.Experiment_ID,
+            Culture_Day: r.Culture_Day,
+            Sample_Date: r.Sample_Date,
+            Cell_Line: r.Cell_Line,
+            Vessel_Group: r.Vessel_Group,
+            Operator: r.Operator
+          });
+        }
+        wideMap.get(key)[`${r.Parameter_Label} (${r.Unit})`] = r.Value;
+      });
+      const wsWide = XLSX.utils.json_to_sheet(Array.from(wideMap.values()));
+      XLSX.utils.book_append_sheet(wb, wsWide, 'Wide_Matrix_Pivot');
+
+      // Sheet 3: Extraction Lineage
+      const lineageData = STATE.extractedRegions.map(reg => ({
+        Target_Parameter: reg.label,
+        Direction: reg.direction,
+        Keyword_Cell: reg.keywordAddr,
+        Keyword_Text: reg.keywordText,
+        Bounding_Box_Start: reg.startAddr,
+        Bounding_Box_End: reg.endAddr,
+        Data_Points_Count: reg.data.length,
+        Extraction_Method: 'Semantic_Keyword_BoundingBox'
+      }));
+      const wsLineage = XLSX.utils.json_to_sheet(lineageData);
+      XLSX.utils.book_append_sheet(wb, wsLineage, 'Extraction_Lineage');
+
+      const expId = document.getElementById('meta-exp-id').value.trim() || 'CellCulture';
+      XLSX.writeFile(wb, `${expId}_Harmonized_DB.xlsx`);
+      showToast('3개 시트가 포함된 통합 엑셀 파일이 다운로드되었습니다.', 'success');
+    }
+
+    function exportToCSV() {
+      if (STATE.finalHarmonized.length === 0) return;
+      const ws = XLSX.utils.json_to_sheet(STATE.finalHarmonized);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      downloadFile(csv, 'Harmonized_Long_DB.csv', 'text/csv');
+      showToast('표준 Long Format CSV 파일이 다운로드되었습니다.', 'success');
+    }
+
+    function exportToJSON() {
+      if (STATE.finalHarmonized.length === 0) return;
+      const jsonStr = JSON.stringify(STATE.finalHarmonized, null, 2);
+      downloadFile(jsonStr, 'Harmonized_DB_Schema.json', 'application/json');
+      showToast('JSON 스키마 파일이 다운로드되었습니다.', 'success');
+    }
+
+    function downloadFile(content, fileName, mimeType) {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function saveToLocalStorageAndNotify() {
+      if (STATE.finalHarmonized.length === 0) return;
+      try {
+        localStorage.setItem('harmonized_keyword_extracted_db', JSON.stringify(STATE.finalHarmonized));
+        showToast('브라우저 LocalStorage에 통합 데이터가 안전하게 저장되었습니다.', 'success');
+      } catch (e) {
+        showToast('로컬 저장 한도 초과: ' + e.message, 'error');
+      }
+    }
+
+    function resetAllState() {
+      if (!confirm('모든 진행 상태를 초기화하시겠습니까?')) return;
+      STATE.uploadedFile = null;
+      STATE.grid2D = [];
+      STATE.detectedKeywords = [];
+      STATE.extractedRegions = [];
+      STATE.finalHarmonized = [];
+      document.getElementById('file-detail-container').innerHTML = 
+        '<p class="text-center text-slate-400 text-sm">업로드된 파일이 없습니다. 상단에서 파일을 선택하거나 데모 버튼을 클릭하세요.</p>';
+      document.getElementById('file-status-badge').textContent = '대기중';
+      document.getElementById('file-status-badge').className = 'badge bg-slate-100 text-slate-600';
+      document.getElementById('file-size-info').textContent = '';
+      document.getElementById('btn-goto-step-2').setAttribute('disabled', 'true');
+      switchStep(1);
+      showToast('초기화되었습니다.', 'info');
+    }
+
+    function showToast(message, type = 'info') {
+      const toast = document.getElementById('toast');
+      const icon = document.getElementById('toast-icon');
+      const msg = document.getElementById('toast-message');
+
+      msg.textContent = message;
+      if (type === 'success') {
+        icon.textContent = '✓';
+        toast.className = 'fixed bottom-5 right-5 z-50 transform transition-all duration-300 opacity-100 translate-y-0 bg-emerald-900 text-emerald-100 text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2 border border-emerald-700';
+      } else if (type === 'error') {
+        icon.textContent = '✕';
+        toast.className = 'fixed bottom-5 right-5 z-50 transform transition-all duration-300 opacity-100 translate-y-0 bg-red-900 text-red-100 text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2 border border-red-700';
+      } else if (type === 'warning') {
+        icon.textContent = '⚠';
+        toast.className = 'fixed bottom-5 right-5 z-50 transform transition-all duration-300 opacity-100 translate-y-0 bg-amber-900 text-amber-100 text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2 border border-amber-700';
+      } else {
+        icon.textContent = 'ℹ';
+        toast.className = 'fixed bottom-5 right-5 z-50 transform transition-all duration-300 opacity-100 translate-y-0 bg-slate-900 text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2 border border-slate-700';
+      }
+
+      setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3500);
+    }
+  </script>
+</body>
+</html>

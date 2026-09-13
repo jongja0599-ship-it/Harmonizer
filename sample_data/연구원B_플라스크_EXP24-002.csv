@@ -1,0 +1,6 @@
+Sample ID,Culture Day,Sampling Date,Host Cell,Condition Group,Live %,VCD (10^6),Glc (g/L),Lac (g/L),Titer (mg/L),Osm (mOsm/kg)
+EXP-24-002,Day 0,2026-03-05,HEK293,Shaker-Control,99.1,0.38,5.5,0.1,0,290
+EXP-24-002,Day 2,2026-03-07,HEK293,Shaker-Control,98.0,1.85,4.8,0.8,45,295
+EXP-24-002,Day 4,2026-03-09,HEK293,Shaker-Control,95.4,6.90,3.2,2.1,180,310
+EXP-24-002,Day 6,2026-03-11,HEK293,Shaker-Control,91.2,14.5,1.8,3.2,450,330
+EXP-24-002,Day 8,2026-03-13,HEK293,Shaker-Control,82.0,11.2,0.4,4.0,720,345
